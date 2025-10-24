@@ -32,11 +32,13 @@ app.post("/create-mandate", async (req, res) => {
       callback_url: "https://example.com",
       callback_method: "get"
     };
-    const response = await axios.post(
-      ${RAZORPAY_BASE}/payment_links,
-      payload,
-      { auth: { username: RZP_KEY_ID, password: RZP_KEY_SECRET } }
-    );
+   const response = await axios.post(
+  `${RAZORPAY_BASE}/payment_links`,
+  payload,
+  {
+    auth: { username: RZP_KEY_ID, password: RZP_KEY_SECRET }
+  }
+);
     res.json({ success: true, link: response.data.short_url || response.data.long_url, data: response.data });
   } catch (err) {
     console.error(err.response ? err.response.data : err.message);
