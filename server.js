@@ -6,12 +6,14 @@ const bodyParser = require("body-parser");
 const app = express();
 app.use(bodyParser.json());
 
-const RZP_KEY_ID = process.env.RZP_KEY_ID || "rzp_test_RWd3JPnadgK0Wo";
-const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET || "cgAikxCZVE4Fm2UDm1p3Dryn";
+const RZP_KEY_ID = process.env.RZP_KEY_ID || "rzp_live_SfI9xBVeNHWIir";
+const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET || "66HqYM7KHCSZzEg0R3Z7MZZs";
 const RAZORPAY_BASE = "https://api.razorpay.com/v1";
 
-app.get("/", (req, res) => res.send("✅ Defendzo Razorpay Test Server Running"));
+// ✅ TEST ROUTE
+app.get("/", (req, res) => res.send("✅ Defendzo Razorpay Server Running"));
 
+// 🔵 OLD API (Payment Link - One Time)
 app.post("/create-mandate", async (req, res) => {
   try {
     const { customerName, customerMobile, customerEmail, amount, description, type } = req.body;
@@ -53,6 +55,7 @@ app.post("/create-mandate", async (req, res) => {
       link: response.data.short_url || response.data.long_url,
       data: response.data
     });
+
   } catch (err) {
     console.error(err.response ? err.response.data : err.message);
     res.status(500).json({
@@ -62,9 +65,7 @@ app.post("/create-mandate", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
-// 🔥 CREATE SUBSCRIPTION (EMI AUTO PAY)
+// 🔥 NEW API (EMI AutoPay Subscription)
 app.post("/create-subscription", async (req, res) => {
   try {
     const { customerName, customerMobile, customerEmail } = req.body;
@@ -101,3 +102,7 @@ app.post("/create-subscription", async (req, res) => {
     });
   }
 });
+
+// ✅ SERVER START LAST ME HOGA
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
