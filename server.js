@@ -19,7 +19,7 @@ app.get("/", (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 🔥 OLD API (KEEP THIS - APP USE कर रहा होगा)
+// 🔥 CREATE SUBSCRIPTION (OLD)
 //////////////////////////////////////////////////////
 app.post("/create-subscription", async (req, res) => {
   try {
@@ -56,6 +56,50 @@ app.post("/create-subscription", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 🚀 NEW API (MANDATE LINK GENERATE)
+// 🚀 CREATE MANDATE LINK (NEW)
 //////////////////////////////////////////////////////
-app.post("/create
+app.post("/create-mandate-link", async (req, res) => {
+  try {
+    const { name, mobile } = req.body;
+
+    const payload = {
+      plan_id: "plan_Sfl6vdpmOL6qf9",
+      customer_notify: 1,
+      total_count: 12
+    };
+
+    const response = await axios.post(
+      `${RAZORPAY_BASE}/subscriptions`,
+      payload,
+      {
+        auth: {
+          username: RZP_KEY_ID,
+          password: RZP_KEY_SECRET
+        }
+      }
+    );
+
+    const link = `https://defendzo.web.app/mandate?sub_id=${response.data.id}&name=${name}&mobile=${mobile}`;
+
+    res.json({
+      success: true,
+      link: link
+    });
+
+  } catch (err) {
+    console.log("❌ ERROR:", err.response?.data || err.message);
+
+    res.status(500).json({
+      success: false,
+      error: err.response?.data || err.message
+    });
+  }
+});
+
+//////////////////////////////////////////////////////
+// ✅ START SERVER
+//////////////////////////////////////////////////////
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
