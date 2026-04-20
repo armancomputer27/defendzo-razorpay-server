@@ -6,25 +6,25 @@ const bodyParser = require("body-parser");
 const app = express();
 app.use(bodyParser.json());
 
-// ⚠️ TEST KEYS USE KARO (abhi live mat use karo)
 const RZP_KEY_ID = process.env.RZP_KEY_ID || "rzp_live_SfI9xBVeNHWIir";
 const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET || "66HqYM7KHCSZzEg0R3Z7MZZs";
 
 const RAZORPAY_BASE = "https://api.razorpay.com/v1";
 
-// ✅ TEST ROUTE
+//////////////////////////////////////////////////////
+// ✅ TEST
+//////////////////////////////////////////////////////
 app.get("/", (req, res) => {
   res.send("✅ Defendzo Razorpay Server Running");
 });
 
-
-// 🔥 EMI AUTOPAY (SUBSCRIPTION CREATE)
+//////////////////////////////////////////////////////
+// 🔥 OLD API (KEEP THIS - APP USE कर रहा होगा)
+//////////////////////////////////////////////////////
 app.post("/create-subscription", async (req, res) => {
   try {
-
-    // ❗ SIMPLE PAYLOAD (customer mat bhejo)
     const payload = {
-      plan_id: "plan_Sfl6vdpmOL6qf9", // 👈 tumhara plan id
+      plan_id: "plan_Sfl6vdpmOL6qf9",
       customer_notify: 1,
       total_count: 12
     };
@@ -40,14 +40,12 @@ app.post("/create-subscription", async (req, res) => {
       }
     );
 
-    // ✅ SUCCESS RESPONSE
     res.json({
       success: true,
       subscriptionId: response.data.id
     });
 
   } catch (err) {
-
     console.log("❌ ERROR:", err.response?.data || err.message);
 
     res.status(500).json({
@@ -57,9 +55,7 @@ app.post("/create-subscription", async (req, res) => {
   }
 });
 
-
-// ✅ SERVER START
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
+//////////////////////////////////////////////////////
+// 🚀 NEW API (MANDATE LINK GENERATE)
+//////////////////////////////////////////////////////
+app.post("/create
