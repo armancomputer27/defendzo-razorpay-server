@@ -24,7 +24,7 @@ app.post("/create-subscription", async (req, res) => {
 
     // ❗ SIMPLE PAYLOAD (customer mat bhejo)
     const payload = {
-      plan_id: "plan_Sfl6vdpmOL6qf9", // 👈 tumhara plan id
+      plan_id: "plan_SfaXiNNcRaVIwO", // 👈 tumhara plan id
       customer_notify: 1,
       total_count: 12
     };
