@@ -6,103 +6,60 @@ const bodyParser = require("body-parser");
 const app = express();
 app.use(bodyParser.json());
 
+// ⚠️ TEST KEYS USE KARO (abhi live mat use karo)
 const RZP_KEY_ID = process.env.RZP_KEY_ID || "rzp_live_SfI9xBVeNHWIir";
 const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET || "66HqYM7KHCSZzEg0R3Z7MZZs";
+
 const RAZORPAY_BASE = "https://api.razorpay.com/v1";
 
 // ✅ TEST ROUTE
-app.get("/", (req, res) => res.send("✅ Defendzo Razorpay Server Running"));
-
-// 🔵 OLD API (Payment Link - One Time)
-app.post("/create-mandate", async (req, res) => {
-  try {
-    const { customerName, customerMobile, customerEmail, amount, description, type } = req.body;
-
-    if (!customerName || !customerMobile || !amount) {
-      return res.status(400).json({ success: false, error: "Missing required fields" });
-    }
-
-    const amountPaise = Math.round(Number(amount) * 100);
-
-    const payload = {
-      amount: amountPaise,
-      currency: "INR",
-      accept_partial: false,
-      reference_id: `mandate_${Date.now()}`,
-      description: description || "E-Mandate Test Link",
-      customer: {
-        name: customerName,
-        contact: customerMobile,
-        email: customerEmail || "test@example.com"
-      },
-      notify: { sms: true, email: true },
-      reminder_enable: true,
-      notes: { app: "Defendzo", type: type || "" },
-      callback_url: "https://example.com",
-      callback_method: "get"
-    };
-
-    const response = await axios.post(
-      `${RAZORPAY_BASE}/payment_links`,
-      payload,
-      {
-        auth: { username: RZP_KEY_ID, password: RZP_KEY_SECRET }
-      }
-    );
-
-    res.json({
-      success: true,
-      link: response.data.short_url || response.data.long_url,
-      data: response.data
-    });
-
-  } catch (err) {
-    console.error(err.response ? err.response.data : err.message);
-    res.status(500).json({
-      success: false,
-      error: err.response ? err.response.data : err.message
-    });
-  }
+app.get("/", (req, res) => {
+  res.send("✅ Defendzo Razorpay Server Running");
 });
 
-// 🔥 NEW API (EMI AutoPay Subscription)
+
+// 🔥 EMI AUTOPAY (SUBSCRIPTION CREATE)
 app.post("/create-subscription", async (req, res) => {
   try {
-    const { customerName, customerMobile, customerEmail } = req.body;
 
+    // ❗ SIMPLE PAYLOAD (customer mat bhejo)
     const payload = {
-      plan_id: "plan_SfaXiNNcRaVIwO", // ✅ तुम्हारा plan
+      plan_id: "plan_SfaXiNNcRaVIwO", // 👈 tumhara plan id
       customer_notify: 1,
-      total_count: 12,
-      customer: {
-        name: customerName,
-        contact: customerMobile,
-        email: customerEmail || "test@example.com"
-      }
+      total_count: 12
     };
 
     const response = await axios.post(
       `${RAZORPAY_BASE}/subscriptions`,
       payload,
       {
-        auth: { username: RZP_KEY_ID, password: RZP_KEY_SECRET }
+        auth: {
+          username: RZP_KEY_ID,
+          password: RZP_KEY_SECRET
+        }
       }
     );
 
+    // ✅ SUCCESS RESPONSE
     res.json({
       success: true,
       subscriptionId: response.data.id
     });
 
   } catch (err) {
-    console.error(err.response ? err.response.data : err.message);
+
+    console.log("❌ ERROR:", err.response?.data || err.message);
+
     res.status(500).json({
       success: false,
-      error: err.response ? err.response.data : err.message
+      error: err.response?.data || err.message
     });
   }
 });
 
-// ✅ SERVER START LAST ME HOGA
+
+// ✅ SERVER START
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
