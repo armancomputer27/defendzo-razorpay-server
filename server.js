@@ -6,7 +6,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-// ❗ ENV से लो (fallback मत रखो production में)
+// ✅ ENV (Render में डालना जरूरी है)
 const RZP_KEY_ID = process.env.RZP_KEY_ID;
 const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
 
@@ -20,7 +20,7 @@ app.get("/", (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 🚀 CREATE MANDATE LINK (UPDATED)
+// 🚀 CREATE MANDATE LINK (FINAL FIXED)
 //////////////////////////////////////////////////////
 app.post("/create-mandate-link", async (req, res) => {
   try {
@@ -30,10 +30,19 @@ app.post("/create-mandate-link", async (req, res) => {
       amount,
       tenure,
       frequency,
-      dealer_name
+      dealer_name,
+      start_date   // 🔥 NEW (date fix)
     } = req.body;
 
-    // 🔥 SUBSCRIPTION CREATE (same plan use)
+    // ✅ validation
+    if (!name || !mobile || !amount) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields"
+      });
+    }
+
+    // 🔥 Razorpay subscription create
     const response = await axios.post(
       `${RAZORPAY_BASE}/subscriptions`,
       {
@@ -49,14 +58,16 @@ app.post("/create-mandate-link", async (req, res) => {
       }
     );
 
-    // 🔥 IMPORTANT FIX (dealer_name + amount pass karo)
+    // 🔥 FINAL LINK (सब params pass हो रहे हैं)
     const link =
       `https://defendzo.web.app/mandate` +
       `?sub_id=${response.data.id}` +
-      `&name=${encodeURIComponent(dealer_name || name)}` +
+      `&dealer_name=${encodeURIComponent(dealer_name || "Defendzo Dealer")}` +
+      `&customer_name=${encodeURIComponent(name)}` +
       `&mobile=${mobile}` +
       `&amount=${amount}` +
-      `&tenure=${tenure}`;
+      `&tenure=${tenure}` +
+      `&date=${encodeURIComponent(start_date || "Today")}`;
 
     res.json({
       success: true,
@@ -74,13 +85,15 @@ app.post("/create-mandate-link", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 🔔 WEBHOOK (ADD THIS)
+// 🔔 WEBHOOK
 //////////////////////////////////////////////////////
 app.post("/webhook", (req, res) => {
   console.log("🔥 EVENT:", req.body.event);
 
   if (req.body.event === "subscription.activated") {
-    console.log("✅ Mandate Activated:", req.body.payload.subscription.entity.id);
+    console.log("✅ Mandate Activated:",
+      req.body.payload.subscription.entity.id
+    );
   }
 
   res.status(200).send("ok");
@@ -90,6 +103,7 @@ app.post("/webhook", (req, res) => {
 // ✅ START SERVER
 //////////////////////////////////////////////////////
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
