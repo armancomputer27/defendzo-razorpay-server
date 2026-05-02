@@ -7,8 +7,8 @@ const app = express();
 app.use(express.json());
 
 // ❗ ENV से लो (fallback मत रखो production में)
-const RZP_KEY_ID = process.env.RZP_KEY_ID;
-const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
+const RZP_KEY_ID = process.env.rzp_live_SfI9xBVeNHWIir;
+const RZP_KEY_SECRET = process.env.66HqYM7KHCSZzEg0R3Z7MZZs;
 
 const RAZORPAY_BASE = "https://api.razorpay.com/v1";
 
