@@ -19,7 +19,7 @@ app.get("/", (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 🚀 CREATE MANDATE LINK (₹1 + 2.5% HANDLING FEE)
+// 🚀 CREATE MANDATE LINK (FINAL PRODUCTION)
 //////////////////////////////////////////////////////
 app.post("/create-mandate-link", async (req, res) => {
   try {
@@ -30,17 +30,21 @@ app.post("/create-mandate-link", async (req, res) => {
       tenure,
       frequency,
       dealer_name,
+      dealer_account_id,   // 🔥 IMPORTANT
       start_date
     } = req.body;
 
-    if (!name || !mobile || !amount || !frequency) {
+    //////////////////////////////////////////////////////
+    // ✅ VALIDATION
+    //////////////////////////////////////////////////////
+    if (!name || !mobile || !amount || !frequency || !dealer_account_id) {
       return res.status(400).json({
         success: false,
-        error: "Missing fields"
+        error: "Missing required fields"
       });
     }
 
-    const freq = frequency.toLowerCase();
+    const freq = frequency.toLowerCase(); // daily/weekly/monthly/yearly
 
     //////////////////////////////////////////////////////
     // 🔥 STEP 1: CREATE PLAN (EMI ONLY)
@@ -52,7 +56,7 @@ app.post("/create-mandate-link", async (req, res) => {
         interval: 1,
         item: {
           name: "Defendzo EMI",
-          amount: parseInt(amount * 100), // EMI amount
+          amount: parseInt(amount * 100), // paise
           currency: "INR"
         }
       },
@@ -65,14 +69,14 @@ app.post("/create-mandate-link", async (req, res) => {
     );
 
     //////////////////////////////////////////////////////
-    // 🔥 STEP 2: CALCULATE HANDLING FEE
+    // 🔥 STEP 2: CALCULATE CHARGES
     //////////////////////////////////////////////////////
     const handlingFee = amount * 0.025;   // 2.5%
-    const authAmount = 1;                 // ₹1 auth
+    const authAmount = 1;                 // ₹1
     const totalCharge = handlingFee + authAmount;
 
     //////////////////////////////////////////////////////
-    // 🔥 STEP 3: CREATE SUBSCRIPTION WITH ADDON
+    // 🔥 STEP 3: CREATE SUBSCRIPTION (AUTO PAYOUT)
     //////////////////////////////////////////////////////
     const subRes = await axios.post(
       `${RAZORPAY_BASE}/subscriptions`,
@@ -81,7 +85,12 @@ app.post("/create-mandate-link", async (req, res) => {
         customer_notify: 1,
         total_count: tenure || 12,
 
-        // 🔥 ONE-TIME CHARGE (₹1 + 2.5%)
+        // 🔥 AUTO PAYOUT TO DEALER
+        transfer_data: {
+          destination: dealer_account_id
+        },
+
+        // 🔥 ONE TIME CHARGE (₹1 + 2.5%)
         addons: [
           {
             item: {
@@ -106,7 +115,7 @@ app.post("/create-mandate-link", async (req, res) => {
     const link =
       `https://defendzo.web.app/mandate` +
       `?sub_id=${subRes.data.id}` +
-      `&dealer_name=${encodeURIComponent(dealer_name || "Defendzo Dealer")}` +
+      `&dealer_name=${encodeURIComponent(dealer_name || "Dealer")}` +
       `&customer_name=${encodeURIComponent(name)}` +
       `&mobile=${mobile}` +
       `&amount=${amount}` +
@@ -114,9 +123,13 @@ app.post("/create-mandate-link", async (req, res) => {
       `&frequency=${frequency}` +
       `&date=${encodeURIComponent(start_date || "Today")}`;
 
+    //////////////////////////////////////////////////////
+    // ✅ RESPONSE
+    //////////////////////////////////////////////////////
     res.json({
       success: true,
-      link: link
+      link: link,
+      subscription_id: subRes.data.id
     });
 
   } catch (err) {
@@ -130,28 +143,44 @@ app.post("/create-mandate-link", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 🔔 WEBHOOK
+// 🔔 WEBHOOK (PAYMENT TRACKING)
 //////////////////////////////////////////////////////
 app.post("/webhook", (req, res) => {
 
   const event = req.body.event;
   console.log("🔥 EVENT:", event);
 
+  //////////////////////////////////////////////////////
+  // ✅ MANDATE SUCCESS
+  //////////////////////////////////////////////////////
   if (event === "subscription.activated") {
-    console.log("✅ Mandate Activated:",
-      req.body.payload.subscription.entity.id
-    );
+    const sub = req.body.payload.subscription.entity;
+
+    console.log("✅ Mandate Activated:", sub.id);
   }
 
+  //////////////////////////////////////////////////////
+  // 💰 EMI PAID
+  //////////////////////////////////////////////////////
   if (event === "invoice.paid") {
+    const invoice = req.body.payload.invoice.entity;
+
     console.log("💰 EMI Paid:",
-      req.body.payload.invoice.entity.id
+      invoice.amount / 100,
+      "Subscription:", invoice.subscription_id
     );
+
+    // 🔥 यहाँ Firestore update कर सकते हो
   }
 
+  //////////////////////////////////////////////////////
+  // ❌ EMI FAILED
+  //////////////////////////////////////////////////////
   if (event === "invoice.payment_failed") {
+    const invoice = req.body.payload.invoice.entity;
+
     console.log("❌ EMI Failed:",
-      req.body.payload.invoice.entity.id
+      invoice.subscription_id
     );
   }
 
