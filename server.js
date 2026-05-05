@@ -6,7 +6,6 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-// ✅ ENV
 const RZP_KEY_ID = process.env.RZP_KEY_ID;
 const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
 
@@ -20,7 +19,7 @@ app.get("/", (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 🚀 CREATE MANDATE LINK (DYNAMIC PLAN FIXED)
+// 🚀 CREATE MANDATE LINK (₹1 + 2.5% HANDLING FEE)
 //////////////////////////////////////////////////////
 app.post("/create-mandate-link", async (req, res) => {
   try {
@@ -34,28 +33,26 @@ app.post("/create-mandate-link", async (req, res) => {
       start_date
     } = req.body;
 
-    // ✅ VALIDATION
     if (!name || !mobile || !amount || !frequency) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields"
+        error: "Missing fields"
       });
     }
 
-    // 🔥 NORMALIZE FREQUENCY
-    const freq = frequency.toLowerCase(); // daily, weekly, monthly, yearly
+    const freq = frequency.toLowerCase();
 
     //////////////////////////////////////////////////////
-    // 🔥 STEP 1: CREATE PLAN (DYNAMIC)
+    // 🔥 STEP 1: CREATE PLAN (EMI ONLY)
     //////////////////////////////////////////////////////
     const planRes = await axios.post(
       `${RAZORPAY_BASE}/plans`,
       {
-        period: freq,        // 🔥 IMPORTANT
+        period: freq,
         interval: 1,
         item: {
-          name: "Defendzo Mandate",
-          amount: parseInt(amount * 100), // paise
+          name: "Defendzo EMI",
+          amount: parseInt(amount * 100), // EMI amount
           currency: "INR"
         }
       },
@@ -68,14 +65,32 @@ app.post("/create-mandate-link", async (req, res) => {
     );
 
     //////////////////////////////////////////////////////
-    // 🔥 STEP 2: CREATE SUBSCRIPTION
+    // 🔥 STEP 2: CALCULATE HANDLING FEE
+    //////////////////////////////////////////////////////
+    const handlingFee = amount * 0.025;   // 2.5%
+    const authAmount = 1;                 // ₹1 auth
+    const totalCharge = handlingFee + authAmount;
+
+    //////////////////////////////////////////////////////
+    // 🔥 STEP 3: CREATE SUBSCRIPTION WITH ADDON
     //////////////////////////////////////////////////////
     const subRes = await axios.post(
       `${RAZORPAY_BASE}/subscriptions`,
       {
         plan_id: planRes.data.id,
         customer_notify: 1,
-        total_count: tenure || 12
+        total_count: tenure || 12,
+
+        // 🔥 ONE-TIME CHARGE (₹1 + 2.5%)
+        addons: [
+          {
+            item: {
+              name: "Authorization + Handling Fee",
+              amount: parseInt(totalCharge * 100),
+              currency: "INR"
+            }
+          }
+        ]
       },
       {
         auth: {
@@ -86,7 +101,7 @@ app.post("/create-mandate-link", async (req, res) => {
     );
 
     //////////////////////////////////////////////////////
-    // 🔥 STEP 3: CREATE LINK
+    // 🔥 STEP 4: CREATE LINK
     //////////////////////////////////////////////////////
     const link =
       `https://defendzo.web.app/mandate` +
@@ -96,7 +111,7 @@ app.post("/create-mandate-link", async (req, res) => {
       `&mobile=${mobile}` +
       `&amount=${amount}` +
       `&tenure=${tenure}` +
-      `&frequency=${frequency}` +   // 🔥 FIX
+      `&frequency=${frequency}` +
       `&date=${encodeURIComponent(start_date || "Today")}`;
 
     res.json({
