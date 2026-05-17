@@ -2,23 +2,29 @@ require("dotenv").config();
 
 const express=require("express");
 const axios=require("axios");
-
 const admin=require("firebase-admin");
 
-const serviceAccount=
-require("./firebase.json");
+//////////////////////////////////////////////////////
+// FIREBASE FROM RENDER ENV
+//////////////////////////////////////////////////////
 
 admin.initializeApp({
 
 credential:
 admin.credential.cert(
-serviceAccount
+
+JSON.parse(
+process.env.FIREBASE_SERVICE_ACCOUNT
+)
+
 )
 
 });
 
 const db=
 admin.firestore();
+
+//////////////////////////////////////////////////////
 
 const app=express();
 
@@ -46,7 +52,7 @@ res.send(
 });
 
 //////////////////////////////////////////////////////
-// CREATE DEALER ROUTE ACCOUNT
+// CREATE DEALER ROUTE + KYC
 //////////////////////////////////////////////////////
 
 app.post(
@@ -68,8 +74,24 @@ pan
 
 }=req.body;
 
+if(
+!dealerUid||
+!name||
+!contact
+){
+
+return res.status(400)
+.json({
+
+success:false,
+error:"missing"
+
+})
+
+}
+
 //////////////////////////////////////////////////////
-// CREATE ROUTE ACCOUNT
+// CREATE ACCOUNT
 //////////////////////////////////////////////////////
 
 const routeRes=
@@ -79,7 +101,7 @@ await axios.post(
 
 {
 
-email:email,
+email,
 
 phone:contact,
 
@@ -115,7 +137,6 @@ auth:{
 
 username:
 RZP_KEY_ID,
-
 password:
 RZP_KEY_SECRET
 
@@ -129,7 +150,7 @@ const accountId=
 routeRes.data.id;
 
 //////////////////////////////////////////////////////
-// UPDATE KYC
+// KYC UPDATE
 //////////////////////////////////////////////////////
 
 await axios.patch(
@@ -146,10 +167,10 @@ pan:pan
 
 bank_account:{
 
-ifsc:ifsc,
-
 account_number:
-account_number
+account_number,
+
+ifsc:ifsc
 
 }
 
@@ -161,7 +182,6 @@ auth:{
 
 username:
 RZP_KEY_ID,
-
 password:
 RZP_KEY_SECRET
 
@@ -171,8 +191,6 @@ RZP_KEY_SECRET
 
 );
 
-//////////////////////////////////////////////////////
-// SAVE FIRESTORE
 //////////////////////////////////////////////////////
 
 await db
@@ -192,7 +210,7 @@ res.json({
 
 success:true,
 
-account_id:
+account:
 accountId
 
 })
@@ -233,17 +251,11 @@ const{
 
 name,
 mobile,
-
 loan_amount,
-
 tenure,
-
 frequency,
-
 dealerUid,
-
 dealer_name,
-
 start_date
 
 }=req.body;
@@ -251,7 +263,6 @@ start_date
 //////////////////////////////////////////////////////
 
 const dealerDoc=
-
 await db
 .collection("users")
 .doc(dealerUid)
@@ -261,7 +272,8 @@ if(!dealerDoc.exists){
 
 return res.json({
 
-success:false
+success:false,
+error:"dealer missing"
 
 })
 
@@ -278,8 +290,7 @@ if(!dealerAccount){
 return res.json({
 
 success:false,
-error:
-"route missing"
+error:"route missing"
 
 })
 
@@ -301,10 +312,6 @@ const emi=
 Math.round(
 loan/months
 );
-
-//////////////////////////////////////////////////////
-// YOUR PROFIT
-//////////////////////////////////////////////////////
 
 const authCharge=
 
@@ -349,7 +356,6 @@ auth:{
 
 username:
 RZP_KEY_ID,
-
 password:
 RZP_KEY_SECRET
 
@@ -360,7 +366,7 @@ RZP_KEY_SECRET
 );
 
 //////////////////////////////////////////////////////
-// SUBSCRIPTION
+// SUB
 //////////////////////////////////////////////////////
 
 const subRes=
@@ -380,11 +386,8 @@ months,
 
 notes:{
 
-dealerAccount:
-dealerAccount,
-
-dealerUid:
-dealerUid
+dealerUid,
+dealerAccount
 
 }
 
@@ -396,7 +399,6 @@ auth:{
 
 username:
 RZP_KEY_ID,
-
 password:
 RZP_KEY_SECRET
 
@@ -417,10 +419,10 @@ customer:name,
 
 mobile,
 
-dealerUid,
-
 subscription:
 subRes.data.id,
+
+dealerUid,
 
 loan_amount:
 loan,
@@ -435,7 +437,7 @@ status:
 timestamp:
 Date.now()
 
-})
+});
 
 //////////////////////////////////////////////////////
 
@@ -445,15 +447,13 @@ const link=
 
 `?sub_id=${subRes.data.id}`+
 
-`&name=${name}`+
-
 `&loan=${loan}`+
-
-`&tenure=${months}`+
 
 `&emi=${emi}`+
 
 `&auth=${authCharge}`+
+
+`&tenure=${months}`+
 
 `&dealer=${dealer_name}`+
 
@@ -512,6 +512,7 @@ const event=
 req.body.event;
 
 console.log(
+"EVENT:",
 event
 );
 
@@ -576,7 +577,6 @@ auth:{
 
 username:
 RZP_KEY_ID,
-
 password:
 RZP_KEY_SECRET
 
@@ -594,7 +594,7 @@ subRes
 .dealerAccount;
 
 //////////////////////////////////////////////////////
-// TRANSFER
+// TRANSFER MONEY
 //////////////////////////////////////////////////////
 
 await axios.post(
@@ -620,7 +620,6 @@ auth:{
 
 username:
 RZP_KEY_ID,
-
 password:
 RZP_KEY_SECRET
 
@@ -691,9 +690,10 @@ res.send("ok");
 console.log(
 e.response?.data||
 e.message
-)
+);
 
-res.status(500)
+res
+.status(500)
 .send("error")
 
 }
