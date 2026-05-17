@@ -1,45 +1,50 @@
 require("dotenv").config();
 
-const express=require("express");
-const axios=require("axios");
-const admin=require("firebase-admin");
+const express = require("express");
+const axios = require("axios");
+const admin = require("firebase-admin");
 
 //////////////////////////////////////////////////////
-// FIREBASE FROM RENDER ENV
+// FIREBASE
 //////////////////////////////////////////////////////
 
 admin.initializeApp({
-
-credential:
-admin.credential.cert(
-
-JSON.parse(
-process.env.FIREBASE_SERVICE_ACCOUNT
-)
-
-)
-
+  credential: admin.credential.cert(
+    JSON.parse(
+      process.env.FIREBASE_SERVICE_ACCOUNT
+    )
+  )
 });
 
-const db=
-admin.firestore();
+const db = admin.firestore();
 
 //////////////////////////////////////////////////////
 
-const app=express();
+const app = express();
 
 app.use(express.json());
 
-//////////////////////////////////////////////////////
+const PORT =
+process.env.PORT || 3000;
 
-const RZP_KEY_ID=
+const RZP_KEY_ID =
 process.env.RZP_KEY_ID;
 
-const RZP_KEY_SECRET=
+const RZP_KEY_SECRET =
 process.env.RZP_KEY_SECRET;
 
-const RAZORPAY_BASE=
+const BASE =
 "https://api.razorpay.com/v1";
+
+//////////////////////////////////////////////////////
+
+const auth = {
+
+username:RZP_KEY_ID,
+
+password:RZP_KEY_SECRET
+
+};
 
 //////////////////////////////////////////////////////
 
@@ -52,7 +57,7 @@ res.send(
 });
 
 //////////////////////////////////////////////////////
-// CREATE DEALER ROUTE + KYC
+// DEALER KYC
 //////////////////////////////////////////////////////
 
 app.post(
@@ -77,27 +82,30 @@ pan
 if(
 !dealerUid||
 !name||
-!contact
+!contact||
+!account_number||
+!ifsc
 ){
 
 return res.status(400)
 .json({
 
 success:false,
-error:"missing"
+error:"missing fields"
 
 })
 
 }
 
 //////////////////////////////////////////////////////
-// CREATE ACCOUNT
+// CREATE ROUTE ACCOUNT
 //////////////////////////////////////////////////////
 
-const routeRes=
+const route=
+
 await axios.post(
 
-`${RAZORPAY_BASE}/accounts`,
+`${BASE}/accounts`,
 
 {
 
@@ -111,7 +119,7 @@ reference_id:
 dealerUid,
 
 legal_business_name:
-business_name,
+business_name||name,
 
 business_type:
 "individual",
@@ -131,63 +139,40 @@ subcategory:
 
 },
 
-{
-
-auth:{
-
-username:
-RZP_KEY_ID,
-password:
-RZP_KEY_SECRET
-
-}
-
-}
+{auth}
 
 );
 
 const accountId=
-routeRes.data.id;
+route.data.id;
 
 //////////////////////////////////////////////////////
-// KYC UPDATE
+// UPDATE KYC
 //////////////////////////////////////////////////////
 
 await axios.patch(
 
-`${RAZORPAY_BASE}/accounts/${accountId}`,
+`${BASE}/accounts/${accountId}`,
 
 {
 
 legal_info:{
 
-pan:pan
+pan
 
 },
 
 bank_account:{
 
-account_number:
 account_number,
 
-ifsc:ifsc
+ifsc
 
 }
 
 },
 
-{
-
-auth:{
-
-username:
-RZP_KEY_ID,
-password:
-RZP_KEY_SECRET
-
-}
-
-}
+{auth}
 
 );
 
@@ -196,7 +181,7 @@ RZP_KEY_SECRET
 await db
 .collection("users")
 .doc(dealerUid)
-.update({
+.set({
 
 razorpay_account:
 accountId,
@@ -204,13 +189,14 @@ accountId,
 kyc_status:
 "submitted"
 
-});
+},{merge:true});
+
+//////////////////////////////////////////////////////
 
 res.json({
 
 success:true,
 
-account:
 accountId
 
 })
@@ -220,7 +206,7 @@ accountId
 console.log(
 e.response?.data||
 e.message
-)
+);
 
 res.status(500)
 .json({
@@ -260,9 +246,8 @@ start_date
 
 }=req.body;
 
-//////////////////////////////////////////////////////
-
 const dealerDoc=
+
 await db
 .collection("users")
 .doc(dealerUid)
@@ -282,10 +267,9 @@ error:"dealer missing"
 const dealer=
 dealerDoc.data();
 
-const dealerAccount=
-dealer.razorpay_account;
-
-if(!dealerAccount){
+if(
+!dealer.razorpay_account
+){
 
 return res.json({
 
@@ -299,14 +283,10 @@ error:"route missing"
 //////////////////////////////////////////////////////
 
 const loan=
-parseInt(
-loan_amount
-);
+parseInt(loan_amount);
 
 const months=
-parseInt(
-tenure
-);
+parseInt(tenure);
 
 const emi=
 Math.round(
@@ -323,10 +303,11 @@ loan*0.025
 // PLAN
 //////////////////////////////////////////////////////
 
-const planRes=
+const plan=
+
 await axios.post(
 
-`${RAZORPAY_BASE}/plans`,
+`${BASE}/plans`,
 
 {
 
@@ -350,34 +331,24 @@ currency:
 
 },
 
-{
-
-auth:{
-
-username:
-RZP_KEY_ID,
-password:
-RZP_KEY_SECRET
-
-}
-
-}
+{auth}
 
 );
 
 //////////////////////////////////////////////////////
-// SUB
+// SUBSCRIPTION
 //////////////////////////////////////////////////////
 
-const subRes=
+const sub=
+
 await axios.post(
 
-`${RAZORPAY_BASE}/subscriptions`,
+`${BASE}/subscriptions`,
 
 {
 
 plan_id:
-planRes.data.id,
+plan.data.id,
 
 customer_notify:1,
 
@@ -386,25 +357,16 @@ months,
 
 notes:{
 
-dealerUid,
-dealerAccount
+dealerAccount:
+dealer.razorpay_account,
+
+dealerUid
 
 }
 
 },
 
-{
-
-auth:{
-
-username:
-RZP_KEY_ID,
-password:
-RZP_KEY_SECRET
-
-}
-
-}
+{auth}
 
 );
 
@@ -412,7 +374,7 @@ RZP_KEY_SECRET
 
 await db
 .collection("mandates")
-.doc(subRes.data.id)
+.doc(sub.data.id)
 .set({
 
 customer:name,
@@ -420,19 +382,17 @@ customer:name,
 mobile,
 
 subscription:
-subRes.data.id,
+sub.data.id,
 
 dealerUid,
 
-loan_amount:
-loan,
+loan_amount:loan,
 
 emi,
 
 authCharge,
 
-status:
-"created",
+status:"created",
 
 timestamp:
 Date.now()
@@ -443,21 +403,7 @@ Date.now()
 
 const link=
 
-`https://defendzo.web.app/mandate`+
-
-`?sub_id=${subRes.data.id}`+
-
-`&loan=${loan}`+
-
-`&emi=${emi}`+
-
-`&auth=${authCharge}`+
-
-`&tenure=${months}`+
-
-`&dealer=${dealer_name}`+
-
-`&date=${start_date}`;
+`https://defendzo.web.app/mandate?sub_id=${sub.data.id}&loan=${loan}&emi=${emi}&auth=${authCharge}&tenure=${months}&dealer=${dealer_name}&date=${start_date}`;
 
 //////////////////////////////////////////////////////
 
@@ -466,11 +412,11 @@ res.json({
 success:true,
 
 subscription:
-subRes.data.id,
-
-authCharge,
+sub.data.id,
 
 emi,
+
+authCharge,
 
 link
 
@@ -481,7 +427,7 @@ link
 console.log(
 e.response?.data||
 e.message
-)
+);
 
 res.status(500)
 .json({
@@ -566,70 +512,49 @@ invoice.subscription_id;
 
 //////////////////////////////////////////////////////
 
-const subRes=
+const sub=
+
 await axios.get(
 
-`${RAZORPAY_BASE}/subscriptions/${subId}`,
+`${BASE}/subscriptions/${subId}`,
 
-{
-
-auth:{
-
-username:
-RZP_KEY_ID,
-password:
-RZP_KEY_SECRET
-
-}
-
-}
+{auth}
 
 );
 
 const dealerAccount=
 
-subRes
-.data
-.notes
+sub.data.notes
 .dealerAccount;
 
 //////////////////////////////////////////////////////
-// TRANSFER MONEY
+// TRANSFER
 //////////////////////////////////////////////////////
 
 await axios.post(
 
-`${RAZORPAY_BASE}/transfers`,
+`${BASE}/transfers`,
 
 {
 
 account:
 dealerAccount,
 
-amount:
 amount,
 
-currency:
-"INR"
+currency:"INR",
+
+notes:{
+
+type:"EMI"
+
+}
 
 },
 
-{
-
-auth:{
-
-username:
-RZP_KEY_ID,
-password:
-RZP_KEY_SECRET
-
-}
-
-}
+{auth}
 
 );
-
-//////////////////////////////////////////////////////
 
 await db
 .collection(
@@ -694,7 +619,7 @@ e.message
 
 res
 .status(500)
-.send("error")
+.send("error");
 
 }
 
@@ -702,10 +627,9 @@ res
 
 //////////////////////////////////////////////////////
 
-const PORT=
-process.env.PORT||3000;
-
-app.listen(PORT,()=>{
+app.listen(
+PORT,
+()=>{
 
 console.log(
 "running:"+PORT
