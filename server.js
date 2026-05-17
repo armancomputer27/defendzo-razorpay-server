@@ -1,241 +1,714 @@
-require('dotenv').config();
+require("dotenv").config();
 
-const express = require("express");
-const axios = require("axios");
+const express=require("express");
+const axios=require("axios");
 
-const app = express();
+const admin=require("firebase-admin");
+
+const serviceAccount=
+require("./firebase.json");
+
+admin.initializeApp({
+
+credential:
+admin.credential.cert(
+serviceAccount
+)
+
+});
+
+const db=
+admin.firestore();
+
+const app=express();
+
 app.use(express.json());
 
 //////////////////////////////////////////////////////
-// ✅ ENV
+
+const RZP_KEY_ID=
+process.env.RZP_KEY_ID;
+
+const RZP_KEY_SECRET=
+process.env.RZP_KEY_SECRET;
+
+const RAZORPAY_BASE=
+"https://api.razorpay.com/v1";
+
 //////////////////////////////////////////////////////
 
-const RZP_KEY_ID = process.env.RZP_KEY_ID;
-const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
+app.get("/",(req,res)=>{
 
-const RAZORPAY_BASE = "https://api.razorpay.com/v1";
+res.send(
+"Defendzo Running"
+)
 
-//////////////////////////////////////////////////////
-// ✅ TEST ROUTE
-//////////////////////////////////////////////////////
-
-app.get("/", (req, res) => {
-  res.send("✅ Defendzo Razorpay Server Running");
 });
 
 //////////////////////////////////////////////////////
-// 🚀 CREATE MANDATE LINK
+// CREATE DEALER ROUTE ACCOUNT
 //////////////////////////////////////////////////////
 
-app.post("/create-mandate-link", async (req, res) => {
+app.post(
+"/dealer-kyc",
+async(req,res)=>{
 
-  try {
+try{
 
-    //////////////////////////////////////////////////////
-    // ✅ GET BODY
-    //////////////////////////////////////////////////////
+const{
 
-    const {
-      name,
-      mobile,
-      amount,
-      tenure,
-      frequency,
-      dealer_name,
-      start_date
-    } = req.body;
+dealerUid,
+name,
+email,
+contact,
+business_name,
+account_number,
+ifsc,
+pan
 
-    //////////////////////////////////////////////////////
-    // ✅ VALIDATION
-    //////////////////////////////////////////////////////
+}=req.body;
 
-    if (!name || !mobile || !amount || !frequency) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing required fields"
-      });
-    }
+//////////////////////////////////////////////////////
+// CREATE ROUTE ACCOUNT
+//////////////////////////////////////////////////////
 
-    //////////////////////////////////////////////////////
-    // ✅ NORMALIZE DATA
-    //////////////////////////////////////////////////////
+const routeRes=
+await axios.post(
 
-    const freq = frequency.toLowerCase();
+`${RAZORPAY_BASE}/accounts`,
 
-    const emiAmount = parseInt(Number(amount) * 100);
+{
 
-    const totalCount = parseInt(tenure || 12);
+email:email,
 
-    //////////////////////////////////////////////////////
-    // 🔥 STEP 1: CREATE PLAN
-    //////////////////////////////////////////////////////
+phone:contact,
 
-    const planRes = await axios.post(
-      `${RAZORPAY_BASE}/plans`,
-      {
-        period: freq,
-        interval: 1,
+type:"route",
 
-        item: {
-          name: "Defendzo EMI",
-          amount: emiAmount,
-          currency: "INR"
-        }
+reference_id:
+dealerUid,
 
-      },
-      {
-        auth: {
-          username: RZP_KEY_ID,
-          password: RZP_KEY_SECRET
-        }
-      }
-    );
+legal_business_name:
+business_name,
 
-    //////////////////////////////////////////////////////
-    // 🔥 STEP 2: CREATE SUBSCRIPTION
-    //////////////////////////////////////////////////////
+business_type:
+"individual",
 
-    const subRes = await axios.post(
-      `${RAZORPAY_BASE}/subscriptions`,
-      {
-        plan_id: planRes.data.id,
+contact_name:
+name,
 
-        customer_notify: 1,
+profile:{
 
-        total_count: totalCount
-      },
-      {
-        auth: {
-          username: RZP_KEY_ID,
-          password: RZP_KEY_SECRET
-        }
-      }
-    );
+category:
+"financial_services",
 
-    //////////////////////////////////////////////////////
-    // 🔥 STEP 3: CREATE FRONTEND LINK
-    //////////////////////////////////////////////////////
+subcategory:
+"lending"
 
-    const link =
-      `https://defendzo.web.app/mandate` +
-      `?sub_id=${subRes.data.id}` +
-      `&dealer_name=${encodeURIComponent(dealer_name || "Defendzo Dealer")}` +
-      `&customer_name=${encodeURIComponent(name)}` +
-      `&mobile=${mobile}` +
-      `&amount=${amount}` +
-      `&tenure=${totalCount}` +
-      `&frequency=${frequency}` +
-      `&date=${encodeURIComponent(start_date || "Today")}`;
+}
 
-    //////////////////////////////////////////////////////
-    // ✅ RESPONSE
-    //////////////////////////////////////////////////////
+},
 
-    res.json({
-      success: true,
-      subscription_id: subRes.data.id,
-      link: link
-    });
+{
 
-  } catch (err) {
+auth:{
 
-    console.log("❌ ERROR:");
+username:
+RZP_KEY_ID,
 
-    console.log(
-      err.response?.data || err.message
-    );
+password:
+RZP_KEY_SECRET
 
-    res.status(500).json({
-      success: false,
-      error: err.response?.data || err.message
-    });
-  }
+}
+
+}
+
+);
+
+const accountId=
+routeRes.data.id;
+
+//////////////////////////////////////////////////////
+// UPDATE KYC
+//////////////////////////////////////////////////////
+
+await axios.patch(
+
+`${RAZORPAY_BASE}/accounts/${accountId}`,
+
+{
+
+legal_info:{
+
+pan:pan
+
+},
+
+bank_account:{
+
+ifsc:ifsc,
+
+account_number:
+account_number
+
+}
+
+},
+
+{
+
+auth:{
+
+username:
+RZP_KEY_ID,
+
+password:
+RZP_KEY_SECRET
+
+}
+
+}
+
+);
+
+//////////////////////////////////////////////////////
+// SAVE FIRESTORE
+//////////////////////////////////////////////////////
+
+await db
+.collection("users")
+.doc(dealerUid)
+.update({
+
+razorpay_account:
+accountId,
+
+kyc_status:
+"submitted"
+
+});
+
+res.json({
+
+success:true,
+
+account_id:
+accountId
+
+})
+
+}catch(e){
+
+console.log(
+e.response?.data||
+e.message
+)
+
+res.status(500)
+.json({
+
+success:false,
+
+error:
+e.response?.data||
+e.message
+
+})
+
+}
+
 });
 
 //////////////////////////////////////////////////////
-// 🔔 WEBHOOK
+// CREATE MANDATE
 //////////////////////////////////////////////////////
 
-app.post("/webhook", (req, res) => {
+app.post(
+"/create-mandate-link",
+async(req,res)=>{
 
-  try {
+try{
 
-    const event = req.body.event;
+const{
 
-    console.log("🔥 EVENT:", event);
+name,
+mobile,
 
-    //////////////////////////////////////////////////////
-    // ✅ MANDATE ACTIVATED
-    //////////////////////////////////////////////////////
+loan_amount,
 
-    if (event === "subscription.activated") {
+tenure,
 
-      const subscription =
-        req.body.payload.subscription.entity;
+frequency,
 
-      console.log("✅ Mandate Activated");
+dealerUid,
 
-      console.log("Subscription ID:", subscription.id);
+dealer_name,
 
-      console.log("Status:", subscription.status);
-    }
+start_date
 
-    //////////////////////////////////////////////////////
-    // 💰 EMI SUCCESS
-    //////////////////////////////////////////////////////
+}=req.body;
 
-    if (event === "invoice.paid") {
+//////////////////////////////////////////////////////
 
-      const invoice =
-        req.body.payload.invoice.entity;
+const dealerDoc=
 
-      console.log("💰 EMI Paid");
+await db
+.collection("users")
+.doc(dealerUid)
+.get();
 
-      console.log("Invoice ID:", invoice.id);
+if(!dealerDoc.exists){
 
-      console.log("Amount:", invoice.amount / 100);
+return res.json({
 
-      console.log("Subscription:", invoice.subscription_id);
-    }
+success:false
 
-    //////////////////////////////////////////////////////
-    // ❌ EMI FAILED
-    //////////////////////////////////////////////////////
+})
 
-    if (event === "invoice.payment_failed") {
+}
 
-      const invoice =
-        req.body.payload.invoice.entity;
+const dealer=
+dealerDoc.data();
 
-      console.log("❌ EMI Failed");
+const dealerAccount=
+dealer.razorpay_account;
 
-      console.log("Invoice ID:", invoice.id);
+if(!dealerAccount){
 
-      console.log("Subscription:", invoice.subscription_id);
-    }
+return res.json({
 
-    //////////////////////////////////////////////////////
-    // ✅ SUCCESS RESPONSE
-    //////////////////////////////////////////////////////
+success:false,
+error:
+"route missing"
 
-    res.status(200).send("ok");
+})
 
-  } catch (err) {
+}
 
-    console.log("❌ WEBHOOK ERROR:", err.message);
+//////////////////////////////////////////////////////
 
-    res.status(500).send("Webhook Error");
-  }
+const loan=
+parseInt(
+loan_amount
+);
+
+const months=
+parseInt(
+tenure
+);
+
+const emi=
+Math.round(
+loan/months
+);
+
+//////////////////////////////////////////////////////
+// YOUR PROFIT
+//////////////////////////////////////////////////////
+
+const authCharge=
+
+Math.round(
+loan*0.025
+)+1;
+
+//////////////////////////////////////////////////////
+// PLAN
+//////////////////////////////////////////////////////
+
+const planRes=
+await axios.post(
+
+`${RAZORPAY_BASE}/plans`,
+
+{
+
+period:
+frequency.toLowerCase(),
+
+interval:1,
+
+item:{
+
+name:
+"Defendzo EMI",
+
+amount:
+emi*100,
+
+currency:
+"INR"
+
+}
+
+},
+
+{
+
+auth:{
+
+username:
+RZP_KEY_ID,
+
+password:
+RZP_KEY_SECRET
+
+}
+
+}
+
+);
+
+//////////////////////////////////////////////////////
+// SUBSCRIPTION
+//////////////////////////////////////////////////////
+
+const subRes=
+await axios.post(
+
+`${RAZORPAY_BASE}/subscriptions`,
+
+{
+
+plan_id:
+planRes.data.id,
+
+customer_notify:1,
+
+total_count:
+months,
+
+notes:{
+
+dealerAccount:
+dealerAccount,
+
+dealerUid:
+dealerUid
+
+}
+
+},
+
+{
+
+auth:{
+
+username:
+RZP_KEY_ID,
+
+password:
+RZP_KEY_SECRET
+
+}
+
+}
+
+);
+
+//////////////////////////////////////////////////////
+
+await db
+.collection("mandates")
+.doc(subRes.data.id)
+.set({
+
+customer:name,
+
+mobile,
+
+dealerUid,
+
+subscription:
+subRes.data.id,
+
+loan_amount:
+loan,
+
+emi,
+
+authCharge,
+
+status:
+"created",
+
+timestamp:
+Date.now()
+
+})
+
+//////////////////////////////////////////////////////
+
+const link=
+
+`https://defendzo.web.app/mandate`+
+
+`?sub_id=${subRes.data.id}`+
+
+`&name=${name}`+
+
+`&loan=${loan}`+
+
+`&tenure=${months}`+
+
+`&emi=${emi}`+
+
+`&auth=${authCharge}`+
+
+`&dealer=${dealer_name}`+
+
+`&date=${start_date}`;
+
+//////////////////////////////////////////////////////
+
+res.json({
+
+success:true,
+
+subscription:
+subRes.data.id,
+
+authCharge,
+
+emi,
+
+link
+
+})
+
+}catch(e){
+
+console.log(
+e.response?.data||
+e.message
+)
+
+res.status(500)
+.json({
+
+success:false,
+
+error:
+e.response?.data||
+e.message
+
+})
+
+}
+
 });
 
 //////////////////////////////////////////////////////
-// ✅ START SERVER
+// WEBHOOK
 //////////////////////////////////////////////////////
 
-const PORT = process.env.PORT || 3000;
+app.post(
+"/webhook",
+async(req,res)=>{
 
-app.listen(PORT, () => {
+try{
 
-  console.log(`✅ Server running on port ${PORT}`);
+const event=
+req.body.event;
+
+console.log(
+event
+);
+
+//////////////////////////////////////////////////////
+
+if(
+event==
+"subscription.activated"
+){
+
+const sub=
+
+req.body
+.payload
+.subscription
+.entity;
+
+await db
+.collection(
+"mandates"
+)
+.doc(sub.id)
+.update({
+
+status:
+"active"
+
+})
+
+}
+
+//////////////////////////////////////////////////////
+
+if(
+event==
+"invoice.paid"
+){
+
+const invoice=
+
+req.body
+.payload
+.invoice
+.entity;
+
+const amount=
+invoice.amount;
+
+const subId=
+invoice.subscription_id;
+
+//////////////////////////////////////////////////////
+
+const subRes=
+await axios.get(
+
+`${RAZORPAY_BASE}/subscriptions/${subId}`,
+
+{
+
+auth:{
+
+username:
+RZP_KEY_ID,
+
+password:
+RZP_KEY_SECRET
+
+}
+
+}
+
+);
+
+const dealerAccount=
+
+subRes
+.data
+.notes
+.dealerAccount;
+
+//////////////////////////////////////////////////////
+// TRANSFER
+//////////////////////////////////////////////////////
+
+await axios.post(
+
+`${RAZORPAY_BASE}/transfers`,
+
+{
+
+account:
+dealerAccount,
+
+amount:
+amount,
+
+currency:
+"INR"
+
+},
+
+{
+
+auth:{
+
+username:
+RZP_KEY_ID,
+
+password:
+RZP_KEY_SECRET
+
+}
+
+}
+
+);
+
+//////////////////////////////////////////////////////
+
+await db
+.collection(
+"emi_history"
+)
+.add({
+
+subscription:
+subId,
+
+dealer:
+dealerAccount,
+
+amount:
+amount/100,
+
+timestamp:
+Date.now()
+
+})
+
+}
+
+//////////////////////////////////////////////////////
+
+if(
+event==
+"invoice.payment_failed"
+){
+
+const invoice=
+
+req.body
+.payload
+.invoice
+.entity;
+
+await db
+.collection(
+"failed_emi"
+)
+.add({
+
+subscription:
+invoice.subscription_id,
+
+timestamp:
+Date.now()
+
+})
+
+}
+
+res.send("ok");
+
+}catch(e){
+
+console.log(
+e.response?.data||
+e.message
+)
+
+res.status(500)
+.send("error")
+
+}
+
+});
+
+//////////////////////////////////////////////////////
+
+const PORT=
+process.env.PORT||3000;
+
+app.listen(PORT,()=>{
+
+console.log(
+"running:"+PORT
+)
 
 });
