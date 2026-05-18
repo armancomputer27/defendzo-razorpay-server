@@ -5,7 +5,7 @@ const axios = require("axios");
 const admin = require("firebase-admin");
 
 //////////////////////////////////////////////////////
-// FIREBASE
+// FIREBASE INIT
 //////////////////////////////////////////////////////
 
 admin.initializeApp({
@@ -36,13 +36,11 @@ process.env.RZP_KEY_SECRET;
 const BASE =
 "https://api.razorpay.com/v1";
 
-//////////////////////////////////////////////////////
-
 const auth = {
 
-username:RZP_KEY_ID,
+  username:RZP_KEY_ID,
 
-password:RZP_KEY_SECRET
+  password:RZP_KEY_SECRET
 
 };
 
@@ -51,7 +49,7 @@ password:RZP_KEY_SECRET
 app.get("/",(req,res)=>{
 
 res.send(
-"Defendzo Running"
+"✅ Defendzo Server Running"
 )
 
 });
@@ -79,6 +77,10 @@ pan
 
 }=req.body;
 
+//////////////////////////////////////////////////////
+// VALIDATION
+//////////////////////////////////////////////////////
+
 if(
 !dealerUid||
 !name||
@@ -91,17 +93,23 @@ return res.status(400)
 .json({
 
 success:false,
+
 error:"missing fields"
 
 })
 
 }
 
+console.log(
+"Dealer UID:",
+dealerUid
+);
+
 //////////////////////////////////////////////////////
-// CREATE ROUTE ACCOUNT
+// CREATE LINKED ACCOUNT
 //////////////////////////////////////////////////////
 
-const route=
+const accountRes=
 
 await axios.post(
 
@@ -109,17 +117,20 @@ await axios.post(
 
 {
 
-email,
+email:
+email || "demo@gmail.com",
 
-phone:contact,
+phone:
+contact,
 
-type:"route",
+type:
+"route",
 
 reference_id:
 dealerUid,
 
 legal_business_name:
-business_name||name,
+business_name || name,
 
 business_type:
 "individual",
@@ -144,10 +155,15 @@ subcategory:
 );
 
 const accountId=
-route.data.id;
+accountRes.data.id;
+
+console.log(
+"ACCOUNT CREATED:",
+accountId
+);
 
 //////////////////////////////////////////////////////
-// UPDATE KYC
+// BANK + PAN UPDATE
 //////////////////////////////////////////////////////
 
 await axios.patch(
@@ -158,11 +174,15 @@ await axios.patch(
 
 legal_info:{
 
-pan
+pan:
+pan || ""
 
 },
 
 bank_account:{
+
+beneficiary_name:
+name,
 
 account_number,
 
@@ -177,6 +197,8 @@ ifsc
 );
 
 //////////////////////////////////////////////////////
+// SAVE FIREBASE
+//////////////////////////////////////////////////////
 
 await db
 .collection("users")
@@ -186,10 +208,21 @@ await db
 razorpay_account:
 accountId,
 
-kyc_status:
-"submitted"
+dealer_name:
+name,
 
-},{merge:true});
+business_name:
+business_name,
+
+kyc_status:
+"approved",
+
+updated:
+Date.now()
+
+},
+
+{merge:true});
 
 //////////////////////////////////////////////////////
 
@@ -197,11 +230,16 @@ res.json({
 
 success:true,
 
+account_id:
 accountId
 
 })
 
 }catch(e){
+
+console.log(
+"KYC ERROR:"
+);
 
 console.log(
 e.response?.data||
@@ -246,6 +284,25 @@ start_date
 
 }=req.body;
 
+//////////////////////////////////////////////////////
+
+if(
+!dealerUid
+){
+
+return res.json({
+
+success:false,
+
+error:
+"dealerUid missing"
+
+})
+
+}
+
+//////////////////////////////////////////////////////
+
 const dealerDoc=
 
 await db
@@ -253,12 +310,16 @@ await db
 .doc(dealerUid)
 .get();
 
-if(!dealerDoc.exists){
+if(
+!dealerDoc.exists
+){
 
 return res.json({
 
 success:false,
-error:"dealer missing"
+
+error:
+"Dealer not found"
 
 })
 
@@ -274,7 +335,9 @@ if(
 return res.json({
 
 success:false,
-error:"route missing"
+
+error:
+"KYC not complete"
 
 })
 
@@ -283,10 +346,14 @@ error:"route missing"
 //////////////////////////////////////////////////////
 
 const loan=
-parseInt(loan_amount);
+parseInt(
+loan_amount
+);
 
 const months=
-parseInt(tenure);
+parseInt(
+tenure
+);
 
 const emi=
 Math.round(
@@ -300,7 +367,7 @@ loan*0.025
 )+1;
 
 //////////////////////////////////////////////////////
-// PLAN
+// CREATE PLAN
 //////////////////////////////////////////////////////
 
 const plan=
@@ -336,7 +403,7 @@ currency:
 );
 
 //////////////////////////////////////////////////////
-// SUBSCRIPTION
+// CREATE SUB
 //////////////////////////////////////////////////////
 
 const sub=
@@ -360,6 +427,7 @@ notes:{
 dealerAccount:
 dealer.razorpay_account,
 
+dealerUid:
 dealerUid
 
 }
@@ -390,8 +458,6 @@ loan_amount:loan,
 
 emi,
 
-authCharge,
-
 status:"created",
 
 timestamp:
@@ -403,7 +469,7 @@ Date.now()
 
 const link=
 
-`https://defendzo.web.app/mandate?sub_id=${sub.data.id}&loan=${loan}&emi=${emi}&auth=${authCharge}&tenure=${months}&dealer=${dealer_name}&date=${start_date}`;
+`https://defendzo.web.app/mandate?sub_id=${sub.data.id}&loan=${loan}&emi=${emi}&auth=${authCharge}&dealer=${dealer_name}`;
 
 //////////////////////////////////////////////////////
 
@@ -414,15 +480,15 @@ success:true,
 subscription:
 sub.data.id,
 
-emi,
-
-authCharge,
-
 link
 
 })
 
 }catch(e){
+
+console.log(
+"MANDATE ERROR"
+);
 
 console.log(
 e.response?.data||
@@ -466,34 +532,6 @@ event
 
 if(
 event==
-"subscription.activated"
-){
-
-const sub=
-
-req.body
-.payload
-.subscription
-.entity;
-
-await db
-.collection(
-"mandates"
-)
-.doc(sub.id)
-.update({
-
-status:
-"active"
-
-})
-
-}
-
-//////////////////////////////////////////////////////
-
-if(
-event==
 "invoice.paid"
 ){
 
@@ -528,7 +566,7 @@ sub.data.notes
 .dealerAccount;
 
 //////////////////////////////////////////////////////
-// TRANSFER
+// MONEY TRANSFER
 //////////////////////////////////////////////////////
 
 await axios.post(
@@ -542,7 +580,8 @@ dealerAccount,
 
 amount,
 
-currency:"INR",
+currency:
+"INR",
 
 notes:{
 
@@ -556,61 +595,21 @@ type:"EMI"
 
 );
 
-await db
-.collection(
-"emi_history"
-)
-.add({
-
-subscription:
-subId,
-
-dealer:
-dealerAccount,
-
-amount:
-amount/100,
-
-timestamp:
-Date.now()
-
-})
+console.log(
+"TRANSFER DONE"
+);
 
 }
 
-//////////////////////////////////////////////////////
-
-if(
-event==
-"invoice.payment_failed"
-){
-
-const invoice=
-
-req.body
-.payload
-.invoice
-.entity;
-
-await db
-.collection(
-"failed_emi"
-)
-.add({
-
-subscription:
-invoice.subscription_id,
-
-timestamp:
-Date.now()
-
-})
-
-}
-
-res.send("ok");
+res.send(
+"ok"
+);
 
 }catch(e){
+
+console.log(
+"WEBHOOK ERROR"
+);
 
 console.log(
 e.response?.data||
@@ -619,7 +618,9 @@ e.message
 
 res
 .status(500)
-.send("error");
+.send(
+"error"
+)
 
 }
 
