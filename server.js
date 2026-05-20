@@ -200,7 +200,7 @@ app.post("/webhook", async (req, res) => {
   res.status(200).send("ok");
 
   try {
-    // 🔐 FIXED: 'val' typo fixed back to strict JavaScript 'const' structure
+    // 🔥 FIX: 'val' ko badal kar Node.js standard 'const' kar diya hai
     const signature = req.headers["x-razorpay-signature"];
     const expectedSignature = crypto
       .createHmac("sha256", RZP_WEBHOOK_SECRET)
