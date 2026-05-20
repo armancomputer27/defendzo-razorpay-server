@@ -2,12 +2,14 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const admin = require("firebase-admin");
-const crypto = require("crypto"); // For secure webhook signature check
+const crypto = require("crypto"); 
 
 // FIREBASE ADMIN INITIALIZATION
-admin.initializeApp({
-  credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
-});
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
+  });
+}
 const db = admin.firestore();
 
 const app = express();
@@ -16,7 +18,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const RZP_KEY_ID = process.env.RZP_KEY_ID;
 const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
-const RZP_WEBHOOK_SECRET = process.env.RZP_WEBHOOK_SECRET || "DEFENDZO_SECRET_KEY"; // Set this in Render/Heroku env
+const RZP_WEBHOOK_SECRET = process.env.RZP_WEBHOOK_SECRET || "DEFENDZO_SECRET_KEY"; 
 const BASE = "https://api.razorpay.com/v1";
 
 const auth = {
@@ -173,7 +175,6 @@ app.post("/create-mandate-link", async (req, res) => {
       timestamp: Date.now()
     });
 
-    // Added &mob param to map cleanly back with client web states
     const link = `https://defendzo.web.app/mandate?sub_id=${sub.data.id}&loan=${loan}&emi=${emi}&auth=${authCharge}&dealer=${encodeURIComponent(finalDealerName)}&mob=${mobile || ''}`;
 
     res.json({
@@ -195,12 +196,12 @@ app.post("/create-mandate-link", async (req, res) => {
 // 3. SECURED & INDEPENDENT WEBHOOK PIPELINE
 //////////////////////////////////////////////////////
 app.post("/webhook", async (req, res) => {
-  // Clear immediately back to Razorpay engine to ensure loop avoids timeouts
+  // Webhook response cleared instantly to avoid timeout blocks
   res.status(200).send("ok");
 
   try {
-    // 🔐 PRODUCTION SECURITY STEP: Verify signature signature structure
-    val signature = req.headers["x-razorpay-signature"];
+    // 🔐 FIXED: 'val' typo fixed back to strict JavaScript 'const' structure
+    const signature = req.headers["x-razorpay-signature"];
     const expectedSignature = crypto
       .createHmac("sha256", RZP_WEBHOOK_SECRET)
       .update(JSON.stringify(req.body))
@@ -214,7 +215,6 @@ app.post("/webhook", async (req, res) => {
     const event = req.body.event;
     console.log("Verified Webhook Event Instance:", event);
 
-    // 🔥 FIRED FOR EVERY SUCCESSFUL EMI RECURRING SETTLEMENT
     if (event === "invoice.paid") {
       const invoice = req.body.payload.invoice.entity;
       const amount = invoice.amount;
@@ -222,12 +222,11 @@ app.post("/webhook", async (req, res) => {
 
       if (!subId) return;
 
-      // Extract subscription data metadata context async
       const sub = await axios.get(`${BASE}/subscriptions/${subId}`, { auth });
       const dealerAccount = sub.data.notes?.dealerAccount;
 
       if (dealerAccount) {
-        console.log(`Processing automatic split allocation of ${amount / 100} INR to Sub-Account: ${dealerAccount}`);
+        console.log(`Processing split allocation of ${amount / 100} INR to Sub-Account: ${dealerAccount}`);
         
         await axios.post(`${BASE}/transfers`, {
           account: dealerAccount,
@@ -239,17 +238,16 @@ app.post("/webhook", async (req, res) => {
           }
         }, { auth });
 
-        // Update tracking ledger in firebase engine
         await db.collection("mandates").doc(subId).set({
           status: "active_recurring_paid",
           last_payment_timestamp: Date.now()
         }, { merge: true });
 
-        console.log(`Split Capital Settlement Dispatch Complete for Account Instance: ${dealerAccount}`);
+        console.log(`Split Settlement Complete for Account: ${dealerAccount}`);
       }
     }
   } catch (e) {
-    console.error("CRITICAL PRODUCTION WEBHOOK CORRUPTION LOGGED:");
+    console.error("CRITICAL PRODUCTION WEBHOOK ERROR:");
     console.error(e.response?.data || e.message);
   }
 });
