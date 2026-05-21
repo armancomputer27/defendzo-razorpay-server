@@ -1,354 +1,171 @@
-require("dotenv").config();
-const express=require("express");
-const axios=require("axios");
-const admin=require("firebase-admin");
+const express = require('express');
+const Razorpay = require('razorpay');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+require('dotenv').config();
 
-const app=express();
-app.use(express.json());
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
 
-/////////////////////////////////////////////////////
-// FIREBASE FIX
-/////////////////////////////////////////////////////
-
-if(!admin.apps.length){
-
-const serviceAccount=
-JSON.parse(
-process.env.FIREBASE_SERVICE_ACCOUNT
-);
-
-serviceAccount.private_key=
-serviceAccount.private_key.replace(
-/\\n/g,
-'\n'
-);
-
-admin.initializeApp({
-
-credential:
-admin.credential.cert(
-serviceAccount
-)
-
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
+// 🔥 CREATE MANDATE
+app.post('/create-mandate', async (req, res) => {
+    try {
+        const {
+            name,
+            mobile,
+            loan_amount,
+            tenure,
+            frequency,
+            dealerUid,
+            dealer_name
+        } = req.body;
+
+        if (!name || !mobile || !loan_amount) {
+            return res.status(400).json({ success: false, message: "Missing required fields" });
+        }
+
+        // Create Customer
+        const customer = await razorpay.customers.create({
+            name: name,
+            contact: mobile,
+            email: `${mobile}@defendzo.com`, // temporary email
+            fail_existing: 0
+        });
+
+        // Create Subscription (Best for recurring EMI)
+        const subscription = await razorpay.subscriptions.create({
+            plan_id: await getOrCreatePlan(frequency, loan_amount, tenure), // dynamic plan
+            customer_id: customer.id,
+            total_count: parseInt(tenure),
+            quantity: 1,
+            notes: {
+                dealerUid: dealerUid,
+                dealer_name: dealer_name,
+                loan_amount: loan_amount,
+                frequency: frequency
+            }
+        });
+
+        const mandateLink = subscription.short_url || `https://rzp.io/i/${subscription.id}`;
+
+        res.json({
+            success: true,
+            link: mandateLink,
+            subscription_id: subscription.id,
+            customer_id: customer.id,
+            message: "Mandate link created successfully"
+        });
+
+    } catch (error) {
+        console.error("Mandate Error:", error);
+        res.status(500).json({
+            success: false,
+            message: error.error?.description || error.message
+        });
+    }
+});
+
+// Helper: Plan Management
+async function getOrCreatePlan(frequency, amount, tenure) {
+    const interval = frequency.toLowerCase() === 'monthly' ? 'monthly' :
+                    frequency.toLowerCase() === 'weekly' ? 'weekly' :
+                    frequency.toLowerCase() === 'yearly' ? 'yearly' : 'monthly';
+
+    const planAmount = Math.round(parseFloat(amount) * 100); // paise mein
+
+    try {
+        // Simple plan name
+        const plan = await razorpay.plans.create({
+            period: interval,
+            interval: 1,
+            item: {
+                name: `${frequency} EMI Plan`,
+                amount: planAmount,
+                currency: "INR",
+                description: `${tenure} ${frequency} installments`
+            }
+        });
+        return plan.id;
+    } catch (e) {
+        console.error("Plan creation error:", e);
+        throw e;
+    }
 }
 
-const db=
-admin.firestore();
+// 🔥 KYC / Bank Account for Payouts
+app.post('/kyc', async (req, res) => {
+    try {
+        const {
+            dealerUid,
+            name,
+            email,
+            contact,
+            business_name,
+            account_number,
+            ifsc,
+            pan
+        } = req.body;
 
-/////////////////////////////////////////////////////
+        // Create Contact
+        const contactRes = await razorpay.contacts.create({
+            name: name,
+            email: email,
+            contact: contact,
+            type: "employee", // or "vendor"
+            reference_id: dealerUid
+        });
 
-const PORT=
-process.env.PORT||3000;
+        // Create Fund Account
+        const fundAccount = await razorpay.fundAccounts.create({
+            contact_id: contactRes.id,
+            account_type: "bank_account",
+            bank_account: {
+                name: name,
+                ifsc: ifsc,
+                account_number: account_number
+            }
+        });
 
-const BASE=
-"https://api.razorpay.com/v1";
+        res.json({
+            success: true,
+            account_id: fundAccount.id,
+            message: "Bank Account verified successfully"
+        });
 
-const auth={
-
-username:
-process.env.RZP_KEY_ID,
-
-password:
-process.env.RZP_KEY_SECRET
-
-};
-
-/////////////////////////////////////////////////////
-
-app.get("/",(_,res)=>{
-
-res.send(
-"DEFENDZO RUNNING"
-);
-
+    } catch (error) {
+        console.error("KYC Error:", error);
+        res.status(500).json({
+            success: false,
+            message: error.error?.description || error.message
+        });
+    }
 });
 
-/////////////////////////////////////////////////////
-// FIRESTORE TEST
-/////////////////////////////////////////////////////
+// Webhook for Mandate/Subscription updates
+app.post('/webhook', (req, res) => {
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
-app.get(
-"/test-firestore",
-async(req,res)=>{
+    // Verify webhook signature (important in production)
+    // const signature = req.headers['x-razorpay-signature'];
+    console.log("Webhook received:", req.body);
 
-try{
+    const event = req.body;
 
-await db
-.collection("test")
-.doc("abc")
-.set({
+    if (event.event === 'subscription.activated' || event.event === 'payment.captured') {
+        // Update Firestore status via your logic or Firebase Admin
+        console.log("✅ Mandate Activated:", event.payload);
+    }
 
-time:
-Date.now()
-
+    res.status(200).json({ status: "ok" });
 });
 
-res.json({
-
-success:true
-
-});
-
-}catch(e){
-
-console.log(e);
-
-res.json({
-
-success:false,
-
-error:
-e.message
-
-});
-
-}
-
-});
-
-/////////////////////////////////////////////////////
-// CREATE MANDATE
-/////////////////////////////////////////////////////
-
-app.post(
-"/create-mandate-link",
-async(req,res)=>{
-
-try{
-
-console.log(
-"MANDATE:",
-req.body
-);
-
-const{
-
-name,
-mobile,
-loan_amount,
-tenure,
-frequency
-
-}=req.body;
-
-if(
-!name||
-!mobile||
-!loan_amount||
-!tenure
-){
-
-return res
-.status(400)
-.json({
-
-success:false,
-
-error:
-"missing fields"
-
-});
-
-}
-
-const loan=
-parseInt(
-loan_amount
-);
-
-const months=
-parseInt(
-tenure
-);
-
-const emi=
-Math.round(
-loan/months
-);
-
-const authCharge=
-Math.round(
-loan*0.025
-)+1;
-
-/////////////////////////////////////////////////////
-// PLAN
-/////////////////////////////////////////////////////
-
-const plan=
-await axios.post(
-
-`${BASE}/plans`,
-
-{
-
-period:
-frequency
-.toLowerCase(),
-
-interval:1,
-
-item:{
-
-name:
-"EMI Payment",
-
-amount:
-emi*100,
-
-currency:
-"INR"
-
-}
-
-},
-
-{auth}
-
-);
-
-/////////////////////////////////////////////////////
-// SUBSCRIPTION
-/////////////////////////////////////////////////////
-
-const sub=
-await axios.post(
-
-`${BASE}/subscriptions`,
-
-{
-
-plan_id:
-plan.data.id,
-
-customer_notify:1,
-
-total_count:
-months,
-
-notes:{
-
-customer:
-name,
-
-mobile
-
-}
-
-},
-
-{auth}
-
-);
-
-/////////////////////////////////////////////////////
-// SAVE FIRESTORE
-/////////////////////////////////////////////////////
-
-await db
-.collection("mandates")
-.doc(sub.data.id)
-.set({
-
-customer:
-name,
-
-mobile,
-
-loan_amount:
-loan,
-
-emi,
-
-authCharge,
-
-subscription:
-sub.data.id,
-
-status:
-"created",
-
-timestamp:
-Date.now()
-
-});
-
-/////////////////////////////////////////////////////
-
-const link=
-
-sub.data.short_url||
-`https://api.razorpay.com/v1/subscriptions/${sub.data.id}`;
-
-res.json({
-
-success:true,
-
-link
-
-});
-
-}catch(e){
-
-console.log(
-e.response?.data||
-e.message
-);
-
-res
-.status(500)
-.json({
-
-success:false,
-
-error:
-e.response?.data||
-e.message
-
-});
-
-}
-
-});
-
-/////////////////////////////////////////////////////
-// WEBHOOK
-/////////////////////////////////////////////////////
-
-app.post(
-"/webhook",
-async(req,res)=>{
-
-res.sendStatus(
-200
-);
-
-try{
-
-console.log(
-req.body.event
-);
-
-}catch(e){
-
-console.log(
-e.message
-);
-
-}
-
-});
-
-/////////////////////////////////////////////////////
-
-app.listen(
-PORT,
-()=>{
-
-console.log(
-"SERVER START"
-);
-
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+    console.log(`🚀 Defendzo Mandate Server running on port ${PORT}`);
 });
