@@ -19,7 +19,7 @@ const db=admin.firestore();
 
 const PORT=process.env.PORT||3000;
 
-const BASE="https://api.razorpay.com/v1";
+const BASE="https://api.razorpay.com/v2";
 
 const auth={
 username:process.env.RZP_KEY_ID,
@@ -84,8 +84,7 @@ business_type:"individual",
 contact_name:name,
 
 profile:{
-category:"services",
-subcategory:"consultancy"
+category:"healthcare"
 },
 
 bank_account:{
