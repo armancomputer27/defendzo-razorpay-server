@@ -507,7 +507,51 @@ e.message
 }
 
 });
+/////////////////////////////////////////////////////
+// CHECK ROUTE STATUS
+/////////////////////////////////////////////////////
 
+app.get("/check-route", async(req,res)=>{
+
+try{
+
+const response=
+await axios.get(
+
+`${BASE_V1}/accounts`,
+
+{auth}
+
+);
+
+res.json({
+
+success:true,
+
+data:response.data
+
+})
+
+}catch(e){
+
+console.log(
+e.response?.data||
+e.message
+);
+
+res.json({
+
+success:false,
+
+error:
+e.response?.data||
+e.message
+
+})
+
+}
+
+});
 /////////////////////////////////////////////////////
 // WEBHOOK
 /////////////////////////////////////////////////////
