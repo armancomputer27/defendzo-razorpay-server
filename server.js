@@ -7,24 +7,35 @@ const app=express();
 app.use(express.json());
 
 /////////////////////////////////////////////////////
-// FIREBASE
+// FIREBASE FIX
 /////////////////////////////////////////////////////
 
 if(!admin.apps.length){
+
+const serviceAccount=
+JSON.parse(
+process.env.FIREBASE_SERVICE_ACCOUNT
+);
+
+serviceAccount.private_key=
+serviceAccount.private_key.replace(
+/\\n/g,
+'\n'
+);
 
 admin.initializeApp({
 
 credential:
 admin.credential.cert(
-JSON.parse(
-process.env.FIREBASE_SERVICE_ACCOUNT
-))
+serviceAccount
+)
 
-})
+});
 
 }
 
-const db=admin.firestore();
+const db=
+admin.firestore();
 
 /////////////////////////////////////////////////////
 
@@ -51,6 +62,49 @@ app.get("/",(_,res)=>{
 res.send(
 "DEFENDZO RUNNING"
 );
+
+});
+
+/////////////////////////////////////////////////////
+// FIRESTORE TEST
+/////////////////////////////////////////////////////
+
+app.get(
+"/test-firestore",
+async(req,res)=>{
+
+try{
+
+await db
+.collection("test")
+.doc("abc")
+.set({
+
+time:
+Date.now()
+
+});
+
+res.json({
+
+success:true
+
+});
+
+}catch(e){
+
+console.log(e);
+
+res.json({
+
+success:false,
+
+error:
+e.message
+
+});
+
+}
 
 });
 
@@ -86,7 +140,8 @@ if(
 !tenure
 ){
 
-return res.status(400)
+return res
+.status(400)
 .json({
 
 success:false,
@@ -94,7 +149,7 @@ success:false,
 error:
 "missing fields"
 
-})
+});
 
 }
 
@@ -130,7 +185,8 @@ await axios.post(
 {
 
 period:
-frequency.toLowerCase(),
+frequency
+.toLowerCase(),
 
 interval:1,
 
@@ -241,7 +297,8 @@ e.response?.data||
 e.message
 );
 
-res.status(500)
+res
+.status(500)
 .json({
 
 success:false,
@@ -276,7 +333,9 @@ req.body.event
 
 }catch(e){
 
-console.log(e);
+console.log(
+e.message
+);
 
 }
 
@@ -290,6 +349,6 @@ PORT,
 
 console.log(
 "SERVER START"
-)
+);
 
 });
