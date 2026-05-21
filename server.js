@@ -1,257 +1,393 @@
 require("dotenv").config();
-const express = require("express");
-const axios = require("axios");
-const admin = require("firebase-admin");
-const crypto = require("crypto"); 
+const express=require("express");
+const axios=require("axios");
+const admin=require("firebase-admin");
+const crypto=require("crypto");
 
-// FIREBASE ADMIN INITIALIZATION
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
-  });
-}
-const db = admin.firestore();
-
-const app = express();
+const app=express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
-const RZP_KEY_ID = process.env.RZP_KEY_ID;
-const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
-const RZP_WEBHOOK_SECRET = process.env.RZP_WEBHOOK_SECRET || "DEFENDZO_SECRET_KEY"; 
-const BASE = "https://api.razorpay.com/v1";
+if(!admin.apps.length){
+admin.initializeApp({
+credential:admin.credential.cert(
+JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+)
+})
+}
 
-const auth = {
-  username: RZP_KEY_ID,
-  password: RZP_KEY_SECRET
+const db=admin.firestore();
+
+const PORT=process.env.PORT||3000;
+
+const BASE="https://api.razorpay.com/v1";
+
+const auth={
+username:process.env.RZP_KEY_ID,
+password:process.env.RZP_KEY_SECRET
 };
 
-// Root Health Check Route
-app.get("/", (req, res) => {
-  res.send("✅ Defendzo Server Running Optimally");
+////////////////////////////////////////////////////////
+
+app.get("/",(_,res)=>{
+res.send("DEFENDZO RUNNING");
 });
 
-//////////////////////////////////////////////////////
-// 1. STABLE & SECURED: DEALER KYC
-//////////////////////////////////////////////////////
-app.post("/dealer-kyc", async (req, res) => {
-  try {
-    const {
-      dealerUid,
-      name,
-      email,
-      contact,
-      business_name,
-      account_number,
-      ifsc,
-      pan
-    } = req.body;
+////////////////////////////////////////////////////////
+// DEALER KYC
+////////////////////////////////////////////////////////
 
-    if (!dealerUid || !name || !contact || !account_number || !ifsc) {
-      return res.status(400).json({ success: false, error: "missing fields" });
-    }
+app.post("/dealer-kyc",async(req,res)=>{
 
-    console.log("Processing KYC for Dealer UID:", dealerUid);
+try{
 
-    const accountPayload = {
-      email: email || "demo@gmail.com",
-      phone: contact,
-      type: "route",
-      reference_id: dealerUid,
-      legal_business_name: business_name || name,
-      business_type: "individual",
-      contact_name: name,
-      profile: {
-        category: "financial_services",
-        subcategory: "lending"
-      },
-      legal_info: {
-        pan: pan ? pan.trim().toUpperCase() : undefined
-      },
-      bank_account: {
-        beneficiary_name: name,
-        account_number: account_number.trim(),
-        ifsc: ifsc.trim().toUpperCase()
-      },
-      apps: {
-        websites: ["https://defendzo.web.app"],
-        tnc_accepted: true 
-      }
-    };
+console.log(req.body);
 
-    const accountRes = await axios.post(`${BASE}/accounts`, accountPayload, { auth });
-    const accountId = accountRes.data.id;
+const{
+dealerUid,
+name,
+email,
+contact,
+business_name,
+account_number,
+ifsc,
+pan
+}=req.body;
 
-    console.log("ACCOUNT CREATED SUCCESSFULLY:", accountId);
+if(
+!dealerUid||
+!name||
+!contact||
+!account_number||
+!ifsc
+){
+return res.status(400).json({
+success:false,
+error:"missing fields"
+});
+}
 
-    await db.collection("users").doc(dealerUid).set({
-      razorpay_account: accountId, 
-      kyc_status: "approved", 
-      updated: Date.now()
-    }, { merge: true });
+const accountPayload={
 
-    res.json({
-      success: true,
-      account_id: accountId
-    });
+email:email||"test@gmail.com",
 
-  } catch (e) {
-    console.error("KYC ERROR LOGGED:", e.response?.data || e.message);
-    res.status(500).json({
-      success: false,
-      error: e.response?.data || e.message
-    });
-  }
+phone:contact,
+
+type:"route",
+
+reference_id:dealerUid,
+
+legal_business_name:
+business_name||name,
+
+business_type:"individual",
+
+contact_name:name,
+
+profile:{
+category:"services",
+subcategory:"consultancy"
+},
+
+bank_account:{
+beneficiary_name:name,
+account_number:account_number,
+ifsc:ifsc
+},
+
+apps:{
+websites:[
+"https://defendzo.web.app"
+]
+}
+};
+
+if(pan){
+accountPayload.legal_info={
+pan:pan.toUpperCase()
+}
+}
+
+const response=
+await axios.post(
+`${BASE}/accounts`,
+accountPayload,
+{auth}
+);
+
+await db
+.collection("users")
+.doc(dealerUid)
+.set({
+
+razorpay_account:
+response.data.id,
+
+kyc_status:"approved",
+
+updated:Date.now()
+
+},{merge:true})
+
+res.json({
+success:true,
+account_id:
+response.data.id
+})
+
+}catch(e){
+
+console.log(
+e.response?.data||
+e.message
+)
+
+res.status(500).json({
+success:false,
+error:
+e.response?.data||
+e.message
+})
+
+}
+
 });
 
-//////////////////////////////////////////////////////
-// 2. FIRESTORE SYNCED: CREATE MANDATE LINK
-//////////////////////////////////////////////////////
-app.post("/create-mandate-link", async (req, res) => {
-  try {
-    const {
-      name,
-      mobile,
-      loan_amount,
-      tenure,
-      frequency,
-      dealerUid,
-      dealer_name
-    } = req.body;
+////////////////////////////////////////////////////////
+// MANDATE CREATE
+////////////////////////////////////////////////////////
 
-    if (!dealerUid || !loan_amount || !tenure || !frequency) {
-      return res.status(400).json({ success: false, error: "Required fields missing" });
-    }
+app.post(
+"/create-mandate-link",
+async(req,res)=>{
 
-    const dealerDoc = await db.collection("users").doc(dealerUid).get();
-    if (!dealerDoc.exists) {
-      return res.status(404).json({ success: false, error: "Dealer not found in database" });
-    }
+try{
 
-    const dealer = dealerDoc.data();
-    if (!dealer.razorpay_account) {
-      return res.status(400).json({ success: false, error: "KYC not complete or Razorpay account mapping missing" });
-    }
+console.log(req.body);
 
-    const finalDealerName = dealer_name || dealer.name || dealer.shop_name || "Authorized Dealer";
-    const loan = parseInt(loan_amount);
-    const months = parseInt(tenure);
-    const emi = Math.round(loan / months);
-    const authCharge = Math.round(loan * 0.025) + 1;
-    const normalizedFrequency = frequency ? frequency.toLowerCase().trim() : "monthly";
+const{
+name,
+mobile,
+loan_amount,
+tenure,
+frequency,
+dealerUid,
+dealer_name
+}=req.body;
 
-    console.log(`Creating Plan for EMI Amount: ${emi * 100} Paise`);
+const dealerDoc=
+await db
+.collection("users")
+.doc(dealerUid)
+.get();
 
-    const plan = await axios.post(`${BASE}/plans`, {
-      period: normalizedFrequency,
-      interval: 1,
-      item: {
-        name: "Defendzo EMI Plan",
-        amount: emi * 100, 
-        currency: "INR"
-      }
-    }, { auth });
+if(!dealerDoc.exists){
 
-    console.log("Plan Created, ID:", plan.data.id);
+return res.status(404)
+.json({
+success:false,
+error:"dealer not found"
+})
 
-    const sub = await axios.post(`${BASE}/subscriptions`, {
-      plan_id: plan.data.id,
-      customer_notify: 1,
-      total_count: months,
-      notes: {
-        dealerAccount: dealer.razorpay_account, 
-        dealerUid: dealerUid
-      }
-    }, { auth });
+}
 
-    await db.collection("mandates").doc(sub.data.id).set({
-      customer: name || "Unknown Customer",
-      mobile: mobile || "",
-      subscription: sub.data.id,
-      dealerUid,
-      loan_amount: loan,
-      emi,
-      status: "created",
-      timestamp: Date.now()
-    });
+const dealer=
+dealerDoc.data();
 
-    const link = `https://defendzo.web.app/mandate?sub_id=${sub.data.id}&loan=${loan}&emi=${emi}&auth=${authCharge}&dealer=${encodeURIComponent(finalDealerName)}&mob=${mobile || ''}`;
+if(
+!dealer.razorpay_account
+){
 
-    res.json({
-      success: true,
-      subscription: sub.data.id,
-      link
-    });
+return res.status(400)
+.json({
+success:false,
+error:"complete kyc first"
+})
+}
 
-  } catch (e) {
-    console.error("MANDATE ERROR LOGGED:", e.response?.data || e.message);
-    res.status(500).json({
-      success: false,
-      error: e.response?.data || e.message
-    });
-  }
+const loan=
+parseInt(loan_amount);
+
+const months=
+parseInt(tenure);
+
+const emi=
+Math.round(
+loan/months
+);
+
+const authCharge=
+Math.round(
+loan*0.025
+)+1;
+
+const plan=
+await axios.post(
+`${BASE}/plans`,
+{
+
+period:
+frequency.toLowerCase(),
+
+interval:1,
+
+item:{
+
+name:"EMI",
+
+amount:emi*100,
+
+currency:"INR"
+
+}
+
+},
+{auth}
+);
+
+const sub=
+await axios.post(
+`${BASE}/subscriptions`,
+{
+
+plan_id:
+plan.data.id,
+
+customer_notify:1,
+
+total_count:
+months,
+
+notes:{
+
+dealerAccount:
+dealer.razorpay_account,
+
+dealerUid
+
+}
+
+},
+
+{auth}
+);
+
+await db
+.collection("mandates")
+.doc(sub.data.id)
+.set({
+
+customer:name,
+
+mobile,
+
+dealerUid,
+
+loan_amount:loan,
+
+emi,
+
+subscription:
+sub.data.id,
+
+status:"created",
+
+timestamp:
+Date.now()
+
 });
 
-//////////////////////////////////////////////////////
-// 3. SECURED & INDEPENDENT WEBHOOK PIPELINE
-//////////////////////////////////////////////////////
-app.post("/webhook", async (req, res) => {
-  // Webhook response cleared instantly to avoid timeout blocks
-  res.status(200).send("ok");
+const link=
+`https://defendzo.web.app/mandate?sub_id=${sub.data.id}&loan=${loan}&emi=${emi}&auth=${authCharge}&dealer=${encodeURIComponent(dealer_name||dealer.name)}`;
 
-  try {
-    // 🔥 FIX: 'val' ko badal kar Node.js standard 'const' kar diya hai
-    const signature = req.headers["x-razorpay-signature"];
-    const expectedSignature = crypto
-      .createHmac("sha256", RZP_WEBHOOK_SECRET)
-      .update(JSON.stringify(req.body))
-      .digest("hex");
+res.json({
+success:true,
+link
+})
 
-    if (signature !== expectedSignature) {
-      console.error("⚠️ Webhook Warning: Unauthorized Signature attempt blocked.");
-      return;
-    }
+}catch(e){
 
-    const event = req.body.event;
-    console.log("Verified Webhook Event Instance:", event);
+console.log(
+e.response?.data||
+e.message
+)
 
-    if (event === "invoice.paid") {
-      const invoice = req.body.payload.invoice.entity;
-      const amount = invoice.amount;
-      const subId = invoice.subscription_id;
+res.status(500)
+.json({
+success:false,
+error:
+e.response?.data||
+e.message
+})
 
-      if (!subId) return;
+}
 
-      const sub = await axios.get(`${BASE}/subscriptions/${subId}`, { auth });
-      const dealerAccount = sub.data.notes?.dealerAccount;
-
-      if (dealerAccount) {
-        console.log(`Processing split allocation of ${amount / 100} INR to Sub-Account: ${dealerAccount}`);
-        
-        await axios.post(`${BASE}/transfers`, {
-          account: dealerAccount,
-          amount: amount, 
-          currency: "INR",
-          notes: { 
-            type: "EMI_COLLECTION",
-            linked_subscription: subId
-          }
-        }, { auth });
-
-        await db.collection("mandates").doc(subId).set({
-          status: "active_recurring_paid",
-          last_payment_timestamp: Date.now()
-        }, { merge: true });
-
-        console.log(`Split Settlement Complete for Account: ${dealerAccount}`);
-      }
-    }
-  } catch (e) {
-    console.error("CRITICAL PRODUCTION WEBHOOK ERROR:");
-    console.error(e.response?.data || e.message);
-  }
 });
 
-app.listen(PORT, () => {
-  console.log("Defendzo secure node engine active on production port: " + PORT);
+////////////////////////////////////////////////////////
+// WEBHOOK
+////////////////////////////////////////////////////////
+
+app.post(
+"/webhook",
+async(req,res)=>{
+
+res.sendStatus(200);
+
+try{
+
+const event=
+req.body.event;
+
+if(
+event!=="invoice.paid"
+)return;
+
+const invoice=
+req.body.payload
+.invoice
+.entity;
+
+const amount=
+invoice.amount;
+
+const subId=
+invoice.subscription_id;
+
+const sub=
+await axios.get(
+`${BASE}/subscriptions/${subId}`,
+{auth}
+);
+
+const account=
+sub.data.notes
+.dealerAccount;
+
+await axios.post(
+`${BASE}/transfers`,
+{
+
+account,
+
+amount,
+
+currency:"INR"
+
+},
+{auth}
+);
+
+}catch(e){
+
+console.log(
+e.response?.data||
+e.message
+)
+
+}
+
+});
+
+app.listen(PORT,()=>{
+console.log("SERVER START");
 });
