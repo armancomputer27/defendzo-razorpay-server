@@ -6,6 +6,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
+// ✅ ENV
 const RZP_KEY_ID = process.env.RZP_KEY_ID;
 const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
 
@@ -19,7 +20,7 @@ app.get("/", (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 🚀 CREATE MANDATE LINK (FINAL PRODUCTION)
+// 🚀 CREATE MANDATE LINK (DYNAMIC PLAN FIXED)
 //////////////////////////////////////////////////////
 app.post("/create-mandate-link", async (req, res) => {
   try {
@@ -30,32 +31,30 @@ app.post("/create-mandate-link", async (req, res) => {
       tenure,
       frequency,
       dealer_name,
-      dealer_account_id,   // 🔥 IMPORTANT
       start_date
     } = req.body;
 
-    //////////////////////////////////////////////////////
     // ✅ VALIDATION
-    //////////////////////////////////////////////////////
-    if (!name || !mobile || !amount || !frequency || !dealer_account_id) {
+    if (!name || !mobile || !amount || !frequency) {
       return res.status(400).json({
         success: false,
         error: "Missing required fields"
       });
     }
 
-    const freq = frequency.toLowerCase(); // daily/weekly/monthly/yearly
+    // 🔥 NORMALIZE FREQUENCY
+    const freq = frequency.toLowerCase(); // daily, weekly, monthly, yearly
 
     //////////////////////////////////////////////////////
-    // 🔥 STEP 1: CREATE PLAN (EMI ONLY)
+    // 🔥 STEP 1: CREATE PLAN (DYNAMIC)
     //////////////////////////////////////////////////////
     const planRes = await axios.post(
       `${RAZORPAY_BASE}/plans`,
       {
-        period: freq,
+        period: freq,        // 🔥 IMPORTANT
         interval: 1,
         item: {
-          name: "Defendzo EMI",
+          name: "Defendzo Mandate",
           amount: parseInt(amount * 100), // paise
           currency: "INR"
         }
@@ -69,37 +68,14 @@ app.post("/create-mandate-link", async (req, res) => {
     );
 
     //////////////////////////////////////////////////////
-    // 🔥 STEP 2: CALCULATE CHARGES
-    //////////////////////////////////////////////////////
-    const handlingFee = amount * 0.025;   // 2.5%
-    const authAmount = 1;                 // ₹1
-    const totalCharge = handlingFee + authAmount;
-
-    //////////////////////////////////////////////////////
-    // 🔥 STEP 3: CREATE SUBSCRIPTION (AUTO PAYOUT)
+    // 🔥 STEP 2: CREATE SUBSCRIPTION
     //////////////////////////////////////////////////////
     const subRes = await axios.post(
       `${RAZORPAY_BASE}/subscriptions`,
       {
         plan_id: planRes.data.id,
         customer_notify: 1,
-        total_count: tenure || 12,
-
-        // 🔥 AUTO PAYOUT TO DEALER
-        transfer_data: {
-          destination: dealer_account_id
-        },
-
-        // 🔥 ONE TIME CHARGE (₹1 + 2.5%)
-        addons: [
-          {
-            item: {
-              name: "Authorization + Handling Fee",
-              amount: parseInt(totalCharge * 100),
-              currency: "INR"
-            }
-          }
-        ]
+        total_count: tenure || 12
       },
       {
         auth: {
@@ -110,26 +86,22 @@ app.post("/create-mandate-link", async (req, res) => {
     );
 
     //////////////////////////////////////////////////////
-    // 🔥 STEP 4: CREATE LINK
+    // 🔥 STEP 3: CREATE LINK
     //////////////////////////////////////////////////////
     const link =
       `https://defendzo.web.app/mandate` +
       `?sub_id=${subRes.data.id}` +
-      `&dealer_name=${encodeURIComponent(dealer_name || "Dealer")}` +
+      `&dealer_name=${encodeURIComponent(dealer_name || "Defendzo Dealer")}` +
       `&customer_name=${encodeURIComponent(name)}` +
       `&mobile=${mobile}` +
       `&amount=${amount}` +
       `&tenure=${tenure}` +
-      `&frequency=${frequency}` +
+      `&frequency=${frequency}` +   // 🔥 FIX
       `&date=${encodeURIComponent(start_date || "Today")}`;
 
-    //////////////////////////////////////////////////////
-    // ✅ RESPONSE
-    //////////////////////////////////////////////////////
     res.json({
       success: true,
-      link: link,
-      subscription_id: subRes.data.id
+      link: link
     });
 
   } catch (err) {
@@ -143,44 +115,28 @@ app.post("/create-mandate-link", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 🔔 WEBHOOK (PAYMENT TRACKING)
+// 🔔 WEBHOOK
 //////////////////////////////////////////////////////
 app.post("/webhook", (req, res) => {
 
   const event = req.body.event;
   console.log("🔥 EVENT:", event);
 
-  //////////////////////////////////////////////////////
-  // ✅ MANDATE SUCCESS
-  //////////////////////////////////////////////////////
   if (event === "subscription.activated") {
-    const sub = req.body.payload.subscription.entity;
-
-    console.log("✅ Mandate Activated:", sub.id);
-  }
-
-  //////////////////////////////////////////////////////
-  // 💰 EMI PAID
-  //////////////////////////////////////////////////////
-  if (event === "invoice.paid") {
-    const invoice = req.body.payload.invoice.entity;
-
-    console.log("💰 EMI Paid:",
-      invoice.amount / 100,
-      "Subscription:", invoice.subscription_id
+    console.log("✅ Mandate Activated:",
+      req.body.payload.subscription.entity.id
     );
-
-    // 🔥 यहाँ Firestore update कर सकते हो
   }
 
-  //////////////////////////////////////////////////////
-  // ❌ EMI FAILED
-  //////////////////////////////////////////////////////
-  if (event === "invoice.payment_failed") {
-    const invoice = req.body.payload.invoice.entity;
+  if (event === "invoice.paid") {
+    console.log("💰 EMI Paid:",
+      req.body.payload.invoice.entity.id
+    );
+  }
 
+  if (event === "invoice.payment_failed") {
     console.log("❌ EMI Failed:",
-      invoice.subscription_id
+      req.body.payload.invoice.entity.id
     );
   }
 
