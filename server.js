@@ -1,3 +1,23 @@
+require("dotenv").config();
+
+const express = require("express");
+const axios = require("axios");
+
+const app = express();
+
+app.use(express.json());
+
+const RZP_KEY_ID = process.env.RZP_KEY_ID;
+const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
+
+//////////////////////////////////////////////////////
+// TEST
+//////////////////////////////////////////////////////
+
+app.get("/", (req,res)=>{
+    res.send("Server Running");
+});
+
 //////////////////////////////////////////////////////
 // CREATE DEALER ACCOUNT
 //////////////////////////////////////////////////////
@@ -9,27 +29,20 @@ async(req,res)=>{
 
 try{
 
-const{
-
-dealerUid,
-name,
-email,
-mobile,
-bankAccount,
-ifsc,
-city,
-state,
-pincode,
-shop_name
-
+const {
+    dealerUid,
+    name,
+    email,
+    mobile,
+    bankAccount,
+    ifsc,
+    city,
+    state,
+    pincode,
+    shop_name
 }=req.body;
 
-//////////////////////////////////////////////////////
-// VALIDATION
-//////////////////////////////////////////////////////
-
 if(
-
 !dealerUid ||
 !name ||
 !email ||
@@ -39,33 +52,18 @@ if(
 !city ||
 !state ||
 !pincode
-
 ){
 
-return res.status(400)
-
-.json({
+return res.status(400).json({
 
 success:false,
-
 error:"Missing fields"
 
 });
 
 }
 
-//////////////////////////////////////////////////////
-// STEP 1
-// CREATE LINKED ACCOUNT
-//////////////////////////////////////////////////////
-
-const linkedRes=
-
-await axios.post(
-
-"https://api.razorpay.com/v2/accounts",
-
-{
+const payload={
 
 email:email,
 
@@ -73,29 +71,20 @@ phone:mobile,
 
 type:"route",
 
-reference_id:
-dealerUid,
+reference_id:dealerUid,
 
 legal_business_name:
 shop_name || name,
 
-contact_name:
-name,
+contact_name:name,
 
-business_type:
-"individual",
+business_type:"individual",
 
 profile:{
 
-category:
-"financial_services",
+category:"financial_services",
 
-subcategory:
-"lending",
-
-//////////////////////////////////////////////////////
-// IMPORTANT FIX
-//////////////////////////////////////////////////////
+subcategory:"lending",
 
 addresses:{
 
@@ -107,17 +96,13 @@ shop_name || "Dealer Shop",
 street2:
 city,
 
-city:
-city,
+city:city,
 
-state:
-state,
+state:state,
 
-postal_code:
-pincode,
+postal_code:pincode,
 
-country:
-"IN"
+country:"IN"
 
 }
 
@@ -125,59 +110,36 @@ country:
 
 }
 
-},
+};
+
+const linkedRes=
+
+await axios.post(
+
+"https://api.razorpay.com/v2/accounts",
+
+payload,
 
 {
 
 auth:{
 
-username:
-RZP_KEY_ID,
+username:RZP_KEY_ID,
 
-password:
-RZP_KEY_SECRET
+password:RZP_KEY_SECRET
 
 }
 
 }
 
 );
-
-const accountId=
-linkedRes.data.id;
-
-console.log(
-"ACCOUNT CREATED:"
-);
-
-console.log(
-accountId);
-
-//////////////////////////////////////////////////////
-// STEP 2
-// SAVE BANK DETAILS (optional log)
-//////////////////////////////////////////////////////
-
-console.log(
-"BANK:",
-bankAccount
-);
-
-console.log(
-"IFSC:",
-ifsc
-);
-
-//////////////////////////////////////////////////////
-// RESPONSE
-//////////////////////////////////////////////////////
 
 res.json({
 
 success:true,
 
 accountId:
-accountId
+linkedRes.data.id
 
 });
 
@@ -185,16 +147,8 @@ accountId
 
 console.log(
 
-JSON.stringify(
-
 err.response?.data ||
-
-err.message,
-
-null,
-2
-
-)
+err.message
 
 );
 
@@ -213,5 +167,20 @@ err.message
 });
 
 }
+
+});
+
+//////////////////////////////////////////////////////
+// START
+//////////////////////////////////////////////////////
+
+const PORT=
+process.env.PORT || 3000;
+
+app.listen(PORT,()=>{
+
+console.log(
+`Running ${PORT}`
+);
 
 });
