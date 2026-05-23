@@ -71,7 +71,9 @@ phone:mobile,
 
 type:"route",
 
-reference_id:dealerUid,
+reference_id:
+(dealerUid || "dealer")
+.substring(0,20)
 
 legal_business_name:
 shop_name || name,
