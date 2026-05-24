@@ -49,7 +49,7 @@ mobile,
 
 bankAccount,
 ifsc,
-
+beneficiaryName,
 city,
 state,
 pincode,
@@ -65,7 +65,8 @@ if(
 !email ||
 !mobile ||
 !bankAccount ||
-!ifsc
+!ifsc ||
+!beneficiaryName
 ){
 
 return res.status(400).json({
@@ -108,7 +109,7 @@ business_type:
 
 customer_facing_business_name:
 shop_name||name,
-
+dashboard_access:true,
 profile:{
 
 category:"financial_services",
@@ -178,18 +179,13 @@ await axios.patch(
 
 {
 
-profile:{
-
 bank_account:{
 
-name:name,
+name:beneficiaryName,
 
 ifsc:ifsc,
 
-account_number:
-bankAccount
-
-}
+account_number:bankAccount
 
 }
 
@@ -198,7 +194,6 @@ bankAccount
 {auth:AUTH}
 
 )
-
 //////////////////////////////////////////////////////
 // FETCH STATUS
 //////////////////////////////////////////////////////
