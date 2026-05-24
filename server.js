@@ -173,11 +173,39 @@ tnc_accepted:true
 // UPDATE BANK KYC
 //////////////////////////////////////////////////////
 
+try{
+
 await axios.patch(
 
 `https://api.razorpay.com/v2/accounts/${accountId}`,
 
 {
+
+contact_name:name,
+
+profile:{
+
+addresses:{
+
+registered:{
+
+street1:"shop",
+
+street2:city,
+
+city:city,
+
+state:state||"CG",
+
+postal_code:pincode||"493001",
+
+country:"IN"
+
+}
+
+}
+
+},
 
 bank_account:{
 
@@ -194,6 +222,20 @@ account_number:bankAccount
 {auth:AUTH}
 
 )
+
+}catch(e){
+
+console.log(
+"KYC ERROR:",
+JSON.stringify(
+e.response?.data||
+e.message,
+null,
+2
+)
+)
+
+}
 //////////////////////////////////////////////////////
 // FETCH STATUS
 //////////////////////////////////////////////////////
