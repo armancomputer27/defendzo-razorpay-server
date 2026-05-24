@@ -20,13 +20,6 @@ process.env.RZP_KEY_SECRET;
 const RAZORPAY_BASE=
 "https://api.razorpay.com/v1";
 
-const AUTH={
-
-username:RZP_KEY_ID,
-password:RZP_KEY_SECRET
-
-};
-
 //////////////////////////////////////////////////////
 // TEST
 //////////////////////////////////////////////////////
@@ -40,7 +33,7 @@ res.send(
 });
 
 //////////////////////////////////////////////////////
-// CREATE DEALER ACCOUNT
+// CREATE DEALER LINKED ACCOUNT
 //////////////////////////////////////////////////////
 
 app.post(
@@ -73,7 +66,10 @@ if(
 !email||
 !mobile||
 !bankAccount||
-!ifsc
+!ifsc||
+!city||
+!state||
+!pincode
 
 ){
 
@@ -81,23 +77,15 @@ return res.status(400)
 .json({
 
 success:false,
-error:"Missing fields"
+
+error:
+"Missing fields"
 
 });
 
 }
 
-//////////////////////////////////////////////////////
-// CREATE LINKED ACCOUNT
-//////////////////////////////////////////////////////
-
-const linkedRes=
-
-await axios.post(
-
-"https://api.razorpay.com/v2/accounts",
-
-{
+const payload={
 
 email:email,
 
@@ -118,11 +106,6 @@ name,
 business_type:
 "individual",
 
-customer_facing_business_name:
-shop_name||name,
-
-dashboard_access:true,
-
 profile:{
 
 category:
@@ -136,7 +119,7 @@ addresses:{
 registered:{
 
 street1:
-shop_name||"Shop",
+shop_name || "Shop",
 
 street2:
 city,
@@ -159,94 +142,38 @@ country:
 
 }
 
-},
+};
 
-{auth:AUTH}
-
-);
-
-const accountId=
-linkedRes.data.id;
-
-//////////////////////////////////////////////////////
-// ADD BANK
-//////////////////////////////////////////////////////
-
-try{
-
-await axios.patch(
-
-`https://api.razorpay.com/v2/accounts/${accountId}`,
-
-{
-
-bank_account:{
-
-name:name,
-
-ifsc:ifsc,
-
-account_number:
-bankAccount
-
-}
-
-},
-
-{auth:AUTH}
-
-);
-
-}catch(e){
-
-console.log(
-"BANK ERROR",
-e.response?.data
-);
-
-}
-
-//////////////////////////////////////////////////////
-// REQUEST ROUTE PRODUCT
-//////////////////////////////////////////////////////
-
-try{
+const linkedRes=
 
 await axios.post(
 
-`https://api.razorpay.com/v2/accounts/${accountId}/products`,
+"https://api.razorpay.com/v2/accounts",
+
+payload,
 
 {
 
-product_name:
-"route",
+auth:{
 
-tnc_accepted:true
+username:
+RZP_KEY_ID,
 
-},
-
-{auth:AUTH}
-
-);
-
-}catch(e){
-
-console.log(
-
-"PRODUCT ERROR",
-
-e.response?.data
-
-);
+password:
+RZP_KEY_SECRET
 
 }
+
+}
+
+);
 
 res.json({
 
 success:true,
 
 accountId:
-accountId
+linkedRes.data.id
 
 });
 
@@ -257,8 +184,7 @@ console.log(
 JSON.stringify(
 
 err.response?.data
-||
-err.message,
+||err.message,
 
 null,
 2
@@ -276,8 +202,7 @@ success:false,
 error:
 
 err.response?.data
-||
-err.message
+||err.message
 
 });
 
@@ -310,6 +235,28 @@ start_date
 
 }=req.body;
 
+if(
+
+!name||
+!mobile||
+!amount||
+!frequency
+
+){
+
+return res.status(400)
+.json({
+
+success:false,
+error:"Missing fields"
+
+});
+
+}
+
+const freq=
+frequency.toLowerCase();
+
 const emiAmount=
 parseInt(
 Number(amount)*100
@@ -323,9 +270,7 @@ tenure||12
 let planPeriod=
 "monthly";
 
-switch(
-frequency.toLowerCase()
-){
+switch(freq){
 
 case "daily":
 
@@ -338,6 +283,13 @@ case "weekly":
 
 planPeriod=
 "weekly";
+
+break;
+
+case "monthly":
+
+planPeriod=
+"monthly";
 
 break;
 
@@ -382,7 +334,19 @@ currency:
 
 },
 
-{auth:AUTH}
+{
+
+auth:{
+
+username:
+RZP_KEY_ID,
+
+password:
+RZP_KEY_SECRET
+
+}
+
+}
 
 );
 
@@ -395,24 +359,30 @@ Math.floor(
 Date.now()/1000
 );
 
-if(start_date){
+if(
+start_date
+){
 
 try{
 
-const p=
+const parts=
 start_date
 .split("-");
 
 const dt=
 new Date(
-p[2],
-p[1]-1,
-p[0]
+
+parts[2],
+parts[1]-1,
+parts[0]
+
 );
 
 startTimestamp=
 Math.floor(
+
 dt.getTime()/1000
+
 );
 
 }catch{}
@@ -434,7 +404,8 @@ await axios.post(
 plan_id:
 planRes.data.id,
 
-customer_notify:1,
+customer_notify:
+1,
 
 total_count:
 totalCount,
@@ -451,7 +422,19 @@ dealerAccountId||""
 
 },
 
-{auth:AUTH}
+{
+
+auth:{
+
+username:
+RZP_KEY_ID,
+
+password:
+RZP_KEY_SECRET
+
+}
+
+}
 
 );
 
@@ -487,20 +470,29 @@ link
 }catch(err){
 
 console.log(
+
+JSON.stringify(
+
 err.response?.data
-||
-err.message
+||err.message,
+
+null,
+2
+
+)
+
 );
 
 res.status(500)
+
 .json({
 
 success:false,
 
 error:
+
 err.response?.data
-||
-err.message
+||err.message
 
 });
 
@@ -528,14 +520,17 @@ console.log(
 event
 );
 
+//////////////////////////////////////////////////////
+// EMI PAID
+//////////////////////////////////////////////////////
+
 if(
 event==="invoice.paid"
 ){
 
 const invoice=
 
-req.body
-.payload
+req.body.payload
 .invoice
 .entity;
 
@@ -551,7 +546,19 @@ await axios.get(
 
 `${RAZORPAY_BASE}/subscriptions/${subscriptionId}`,
 
-{auth:AUTH}
+{
+
+auth:{
+
+username:
+RZP_KEY_ID,
+
+password:
+RZP_KEY_SECRET
+
+}
+
+}
 
 );
 
@@ -590,7 +597,19 @@ type:
 
 },
 
-{auth:AUTH}
+{
+
+auth:{
+
+username:
+RZP_KEY_ID,
+
+password:
+RZP_KEY_SECRET
+
+}
+
+}
 
 );
 
@@ -615,8 +634,11 @@ console.log(
 err.message
 );
 
-res.status(500)
-.send("error");
+res
+.status(500)
+.send(
+"error"
+);
 
 }
 
@@ -636,7 +658,9 @@ PORT,
 ()=>{
 
 console.log(
+
 `Running ${PORT}`
+
 );
 
 }
