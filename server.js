@@ -164,7 +164,7 @@ type:"route",
 
 reference_id:
 (dealerUid||"dealer")
-substring(0,20),
+.substring(0,20),
 
 legal_business_name:
 businessName || shop_name || name,
