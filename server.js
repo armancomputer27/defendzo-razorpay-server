@@ -1,22 +1,26 @@
 require("dotenv").config();
 
-const express = require("express");
-const axios = require("axios");
-const crypto = require("crypto");
+const express=require("express");
+const axios=require("axios");
+const crypto=require("crypto");
 
-const app = express();
+const app=express();
 
 app.use(express.json({
-  verify:(req,res,buf)=>{
-    req.rawBody=buf.toString();
-  }
+
+verify:(req,res,buf)=>{
+
+req.rawBody=buf.toString();
+
+}
+
 }));
 
 //////////////////////////////////////////////////////
 // ENV
 //////////////////////////////////////////////////////
 
-const {
+const{
 
 RZP_KEY_ID,
 RZP_KEY_SECRET,
@@ -33,9 +37,7 @@ if(
 
 ){
 
-console.log(
-"❌ Missing ENV"
-);
+console.log("❌ Missing ENV");
 
 process.exit(1);
 
@@ -58,7 +60,7 @@ const RAZORPAY_BASE=
 app.get("/",(req,res)=>{
 
 res.send(
-"✅ Defendzo Server Running"
+"✅ Defendzo Running"
 );
 
 });
@@ -98,6 +100,7 @@ shop_name
 }=req.body;
 
 if(
+
 !dealerUid ||
 !name ||
 !email ||
@@ -117,6 +120,7 @@ if(
 ){
 
 return res.status(400)
+
 .json({
 
 success:false,
@@ -125,16 +129,15 @@ error:"Missing Fields"
 });
 
 }
+
 console.log({
 
 dealerUid,
 name,
 email,
 mobile,
-
 businessName,
 businessType,
-
 bankAccount,
 ifsc,
 beneficiaryName
@@ -161,7 +164,7 @@ type:"route",
 
 reference_id:
 (dealerUid||"dealer")
-.substring(0,20),
+substring(0,20),
 
 legal_business_name:
 businessName || shop_name || name,
@@ -185,22 +188,19 @@ addresses:{
 registered:{
 
 street1:
-businessName || shop_name || "Shop",
+businessName,
 
 street2:
 city,
 
-city:
 city,
 
-state:
 state,
 
 postal_code:
 pincode,
 
-country:
-"IN"
+country:"IN"
 
 }
 
@@ -217,6 +217,11 @@ country:
 const accountId=
 linkedRes.data.id;
 
+console.log(
+"ACCOUNT CREATED:",
+accountId
+);
+
 //////////////////////////////////////////////////////
 // ENABLE ROUTE
 //////////////////////////////////////////////////////
@@ -227,50 +232,120 @@ await axios.post(
 
 {
 
-product_name:
-"route",
+product_name:"route",
 
-tnc_accepted:
-true
+tnc_accepted:{
+accepted:true
+}
 
 },
 
 {auth:AUTH}
 
 );
-//////////////////////////////////////////////////////
-// WAIT FOR ROUTE SETUP
-//////////////////////////////////////////////////////
 
-await new Promise(resolve =>
-setTimeout(resolve,3000)
+console.log(
+"ROUTE ENABLED"
 );
 
 //////////////////////////////////////////////////////
-// UPDATE ROUTE CONFIG + BANK
+// WAIT UNTIL ROUTE READY
 //////////////////////////////////////////////////////
 
-try {
+let routeReady=false;
 
-console.log({
-  bankAccount,
-  ifsc,
-  beneficiaryName
-});
+for(
 
-const bankRes = await axios.patch(
+let i=0;
+i<5;
+i++
+
+){
+
+try{
+
+const check=
+
+await axios.get(
+
+`https://api.razorpay.com/v2/accounts/${accountId}/products`,
+
+{auth:AUTH}
+
+);
+
+const route=
+
+check.data.items
+?.find(
+
+x=>
+
+x.product_name==="route"
+
+);
+
+if(route){
+
+routeReady=true;
+
+break;
+
+}
+
+}catch(e){
+
+console.log(
+"WAIT..."
+);
+
+}
+
+await new Promise(
+
+r=>setTimeout(
+r,
+2000
+)
+
+);
+
+}
+
+if(!routeReady){
+
+throw new Error(
+
+"Route product not ready"
+
+);
+
+}
+
+//////////////////////////////////////////////////////
+// UPDATE BANK
+//////////////////////////////////////////////////////
+
+try{
+
+const bankRes=
+
+await axios.patch(
 
 `https://api.razorpay.com/v2/accounts/${accountId}/products/route`,
 
 {
 
-settlement_bank_account: {
+settlements:{
 
-account_number: bankAccount,
+account_number:
+bankAccount,
 
-ifsc: ifsc,
+ifsc_code:
+ifsc,
 
-beneficiary_name: beneficiaryName
+beneficiary_name:
+beneficiaryName
 
 }
 
@@ -280,40 +355,27 @@ beneficiary_name: beneficiaryName
 
 );
 
-console.log("SETTLEMENT UPDATED");
+console.log(
+
+"SETTLEMENT UPDATED"
+
+);
 
 console.log(
+
 JSON.stringify(
 bankRes.data,
 null,
 2
-));
-
-const routeData=await axios.get(
-
-`https://api.razorpay.com/v2/accounts/${accountId}/products/route`,
-
-{auth:AUTH}
+)
 
 );
 
-console.log(
-"ROUTE DATA:"
-);
-
-console.log(
-JSON.stringify(
-routeData.data,
-null,
-2
-));
-
-}
-catch(e){
+}catch(e){
 
 console.log(
 
-"ROUTE ERROR:",
+"ROUTE ERROR",
 
 JSON.stringify(
 e.response?.data ||
@@ -325,8 +387,9 @@ null,
 );
 
 }
+
 //////////////////////////////////////////////////////
-// FETCH STATUS
+// FETCH FINAL
 //////////////////////////////////////////////////////
 
 const finalData=
@@ -353,14 +416,14 @@ finalData.data
 
 });
 
-}catch(err){
+}catch(e){
 
 console.log(
 
 JSON.stringify(
 
-err.response?.data ||
-err.message,
+e.response?.data||
+e.message,
 
 null,
 2
@@ -377,8 +440,8 @@ success:false,
 
 error:
 
-err.response?.data ||
-err.message
+e.response?.data||
+e.message
 
 });
 
@@ -402,36 +465,13 @@ const{
 
 name,
 mobile,
-
 amount,
 tenure,
-
 frequency,
-
 dealer_name,
-
 dealerAccountId
 
 }=req.body;
-
-if(
-
-!amount ||
-!frequency
-
-){
-
-return res.status(400)
-.json({
-
-success:false,
-
-error:
-"Missing fields"
-
-});
-
-}
 
 const allowed=[
 
@@ -451,12 +491,11 @@ frequency.toLowerCase()
 ){
 
 return res.status(400)
+
 .json({
 
 success:false,
-
-error:
-"Invalid frequency"
+error:"Invalid"
 
 });
 
@@ -474,10 +513,6 @@ parseInt(
 tenure||12
 );
 
-//////////////////////////////////////////////////////
-// PLAN
-//////////////////////////////////////////////////////
-
 const plan=
 
 await axios.post(
@@ -487,7 +522,7 @@ await axios.post(
 {
 
 period:
-frequency.toLowerCase(),
+frequency,
 
 interval:1,
 
@@ -510,10 +545,6 @@ currency:
 
 );
 
-//////////////////////////////////////////////////////
-// SUBSCRIPTION
-//////////////////////////////////////////////////////
-
 const sub=
 
 await axios.post(
@@ -525,16 +556,14 @@ await axios.post(
 plan_id:
 plan.data.id,
 
-customer_notify:
-1,
+customer_notify:1,
 
 total_count:
 total,
 
 notes:{
 
-dealerAccountId:
-dealerAccountId||""
+dealerAccountId
 
 }
 
@@ -546,21 +575,7 @@ dealerAccountId||""
 
 const link=
 
-`https://defendzo.web.app/mandate`+
-
-`?sub_id=${sub.data.id}`+
-
-`&dealer_name=${encodeURIComponent(
-dealer_name||"Dealer"
-)}`+
-
-`&customer_name=${encodeURIComponent(
-name||""
-)}`+
-
-`&mobile=${mobile||""}`+
-
-`&amount=${amount}`;
+`https://defendzo.web.app/mandate?sub_id=${sub.data.id}`;
 
 res.json({
 
@@ -575,21 +590,15 @@ link
 
 }catch(e){
 
-console.log(
-
-e.response?.data ||
-e.message
-
-);
-
 res.status(500)
+
 .json({
 
 success:false,
 
 error:
 
-e.response?.data ||
+e.response?.data||
 e.message
 
 });
@@ -599,7 +608,7 @@ e.message
 });
 
 //////////////////////////////////////////////////////
-// WEBHOOK VERIFY
+// WEBHOOK
 //////////////////////////////////////////////////////
 
 function verify(req){
@@ -636,17 +645,11 @@ signature===expected
 
 }
 
-//////////////////////////////////////////////////////
-// WEBHOOK
-//////////////////////////////////////////////////////
-
 app.post(
 
 "/webhook",
 
-async(req,res)=>{
-
-try{
+(req,res)=>{
 
 if(
 !verify(req)
@@ -660,58 +663,16 @@ return res
 
 }
 
-const event=
-req.body.event;
-
 console.log(
-"EVENT:",
-event
+req.body.event
 );
-
-if(
-event==="invoice.paid"
-){
-
-const invoice=
-
-req.body.payload
-.invoice
-.entity;
-
-console.log(
-
-"EMI PAID:",
-
-invoice.subscription_id,
-
-invoice.amount
-
-);
-
-}
 
 res.send(
 "ok"
 );
 
-}catch(e){
-
-console.log(
-e.response?.data||
-e.message
-);
-
-res.status(500)
-.send(
-"error"
-);
-
-}
-
 });
 
-//////////////////////////////////////////////////////
-// START
 //////////////////////////////////////////////////////
 
 app.listen(
