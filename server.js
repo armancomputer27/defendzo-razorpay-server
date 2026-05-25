@@ -238,31 +238,39 @@ true
 {auth:AUTH}
 
 );
+//////////////////////////////////////////////////////
+// WAIT FOR ROUTE SETUP
+//////////////////////////////////////////////////////
+
+await new Promise(resolve =>
+setTimeout(resolve,3000)
+);
 
 //////////////////////////////////////////////////////
-// UPDATE BANK
+// UPDATE ROUTE CONFIG + BANK
 //////////////////////////////////////////////////////
 
-try{
+try {
 
-const bankRes=
+console.log({
+  bankAccount,
+  ifsc,
+  beneficiaryName
+});
 
-await axios.patch(
+const bankRes = await axios.patch(
 
-`https://api.razorpay.com/v2/accounts/${accountId}`,
+`https://api.razorpay.com/v2/accounts/${accountId}/products/route`,
 
 {
 
-bank_account:{
+settlement_bank_account: {
 
-beneficiary_name:
-beneficiaryName,
+account_number: bankAccount,
 
-ifsc_code:
-ifsc,
+ifsc: ifsc,
 
-account_number:
-bankAccount
+beneficiary_name: beneficiaryName
 
 }
 
@@ -272,19 +280,40 @@ bankAccount
 
 );
 
+console.log("SETTLEMENT UPDATED");
+
 console.log(
-"BANK UPDATED:"
+JSON.stringify(
+bankRes.data,
+null,
+2
+));
+
+const routeData=await axios.get(
+
+`https://api.razorpay.com/v2/accounts/${accountId}/products/route`,
+
+{auth:AUTH}
+
 );
 
 console.log(
-bankRes.data
+"ROUTE DATA:"
 );
 
-}catch(e){
+console.log(
+JSON.stringify(
+routeData.data,
+null,
+2
+));
+
+}
+catch(e){
 
 console.log(
 
-"KYC ERROR:",
+"ROUTE ERROR:",
 
 JSON.stringify(
 e.response?.data ||
