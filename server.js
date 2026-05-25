@@ -245,48 +245,13 @@ true
 
 try{
 
+const bankRes=
+
 await axios.patch(
 
 `https://api.razorpay.com/v2/accounts/${accountId}`,
 
 {
-
-contact_name:name,
-
-profile:{
-
-business_model:
-"Loan collection services",
-
-addresses:{
-
-registered:{
-
-street1:
-businessName || "Shop",
-
-city:
-city,
-
-state:
-state,
-
-postal_code:
-pincode,
-
-country:"IN"
-
-}
-
-}
-
-},
-
-legal_info:{
-
-pan:"ABCDE1234F"
-
-},
 
 bank_account:{
 
@@ -307,19 +272,30 @@ bankAccount
 
 );
 
+console.log(
+"BANK UPDATED:"
+);
+
+console.log(
+bankRes.data
+);
+
 }catch(e){
 
 console.log(
 
 "KYC ERROR:",
 
+JSON.stringify(
 e.response?.data ||
-e.message
+e.message,
+null,
+2
+)
 
 );
 
 }
-
 //////////////////////////////////////////////////////
 // FETCH STATUS
 //////////////////////////////////////////////////////
