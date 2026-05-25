@@ -85,63 +85,45 @@ error:
 
 }
 
-const payload={
+const payload = {
+  email: email,
+  phone: mobile,
 
-email:email,
+  type: "route",
 
-phone:mobile,
+  reference_id:
+    (dealerUid || "dealer")
+    .substring(0,20),
 
-type:"route",
+  legal_business_name:
+    shop_name || name,
 
-reference_id:
-(dealerUid||"dealer")
-.substring(0,20),
+  contact_name: name,
 
-legal_business_name:
-shop_name||name,
+  business_type: "individual",
 
-contact_name:
-name,
+  profile: {
+    category: "financial_services",
 
-business_type:
-"individual",
+    subcategory: "lending",
 
-profile:{
+    addresses: {
+      registered: {
+        street1:
+          shop_name || "Shop",
 
-category:
-"financial_services",
+        street2: city,
 
-subcategory:
-"lending",
+        city: city,
 
-addresses:{
+        state: state,
 
-registered:{
+        postal_code: pincode,
 
-street1:
-shop_name || "Shop",
-
-street2:
-city,
-
-city:
-city,
-
-state:
-state,
-
-postal_code:
-pincode,
-
-country:
-"IN"
-
-}
-
-}
-
-}
-
+        country: "IN"
+      }
+    }
+  }
 };
 
 const linkedRes=
