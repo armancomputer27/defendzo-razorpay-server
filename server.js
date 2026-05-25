@@ -1,54 +1,41 @@
 require("dotenv").config();
 
-const express=require("express");
-const axios=require("axios");
-const crypto=require("crypto");
+const express = require("express");
+const axios = require("axios");
 
-const app=express();
+const app = express();
 
-app.use(express.json({
- verify:(req,res,buf)=>{
-   req.rawBody=buf.toString();
- }
-}));
+app.use(express.json());
 
 //////////////////////////////////////////////////////
 // ENV
 //////////////////////////////////////////////////////
 
-const {
- RZP_KEY_ID,
- RZP_KEY_SECRET,
- WEBHOOK_SECRET,
- PORT
-}=process.env;
+const RZP_KEY_ID = process.env.RZP_KEY_ID;
+const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
 
-const AUTH={
+const RAZORPAY_BASE = "https://api.razorpay.com/v1";
 
- username:RZP_KEY_ID,
- password:RZP_KEY_SECRET
-
+const AUTH = {
+    username: RZP_KEY_ID,
+    password: RZP_KEY_SECRET
 };
-
-const RAZORPAY_BASE=
-"https://api.razorpay.com/v1";
 
 //////////////////////////////////////////////////////
 
-app.get("/",(req,res)=>{
+app.get("/", (req,res)=>{
 
-res.send(
-"✅ Defendzo Running"
-);
+    res.send("✅ Defendzo Server Running")
 
 });
 
 //////////////////////////////////////////////////////
-// CREATE DEALER ACCOUNT
+// CREATE DEALER + AUTO KYC
 //////////////////////////////////////////////////////
 
 app.post(
 "/create-dealer-account",
+
 async(req,res)=>{
 
 try{
@@ -63,41 +50,38 @@ mobile,
 bankAccount,
 ifsc,
 beneficiaryName,
-
 city,
 state,
 pincode,
+
 shop_name
 
 }=req.body;
 
+
 if(
-
-!dealerUid||
-!name||
-!email||
-!mobile||
-!bankAccount||
-!ifsc||
-!beneficiaryName
-
+!dealerUid ||
+!name ||
+!email ||
+!mobile ||
+!bankAccount ||
+!ifsc
 ){
 
-return res.status(400)
-.json({
+return res.status(400).json({
 
 success:false,
 error:"Missing fields"
 
-});
+})
 
 }
 
 //////////////////////////////////////////////////////
-// CREATE LINKED ACCOUNT
+// CREATE ACCOUNT
 //////////////////////////////////////////////////////
 
-const accountRes=
+const accountCreate=
 
 await axios.post(
 
@@ -125,32 +109,26 @@ business_type:
 customer_facing_business_name:
 shop_name||name,
 
-dashboard_access:true,
-
 profile:{
 
-category:
-"financial_services",
+category:"financial_services",
 
-subcategory:
-"lending",
+subcategory:"lending",
 
 addresses:{
 
 registered:{
 
-street1:
-shop_name||"Shop",
+street1:"shop",
 
-street2:
-city,
+street2:city,
 
 city:city,
 
-state:state,
+state:state||"CG",
 
 postal_code:
-pincode,
+pincode||"493001",
 
 country:"IN"
 
@@ -164,16 +142,15 @@ country:"IN"
 
 {auth:AUTH}
 
-);
+)
 
 const accountId=
-accountRes.data.id;
+accountCreate.data.id;
+
 
 //////////////////////////////////////////////////////
-// ENABLE ROUTE
+// ENABLE ROUTE PRODUCT
 //////////////////////////////////////////////////////
-
-const productRes=
 
 await axios.post(
 
@@ -189,13 +166,11 @@ tnc_accepted:true
 
 {auth:AUTH}
 
-);
+)
 
 //////////////////////////////////////////////////////
-// ADD BANK DETAILS
+// UPDATE BANK KYC
 //////////////////////////////////////////////////////
-
-try{
 
 await axios.patch(
 
@@ -203,16 +178,18 @@ await axios.patch(
 
 {
 
+profile:{
+
 bank_account:{
 
-name:
-beneficiaryName,
+name:beneficiaryName,
+
+ifsc:ifsc,
 
 account_number:
-bankAccount,
+bankAccount
 
-ifsc:
-ifsc
+}
 
 }
 
@@ -220,63 +197,10 @@ ifsc
 
 {auth:AUTH}
 
-);
-
-}catch(e){
-
-console.log(
-"BANK ERROR:",
-JSON.stringify(
-e.response?.data||
-e.message,
-null,
-2
-));
-
-}
+)
 
 //////////////////////////////////////////////////////
-// CREATE KYC LINK
-//////////////////////////////////////////////////////
-
-let kycLink="";
-
-try{
-
-const onboard=
-
-await axios.post(
-
-`https://api.razorpay.com/v2/accounts/${accountId}/products/${productRes.data.id}/onboarding_links`,
-
-{
-
-platform_name:
-"Defendzo",
-
-redirect_url:
-"https://defendzo.web.app/kyc-success"
-
-},
-
-{auth:AUTH}
-
-);
-
-kycLink=
-onboard.data.short_url;
-
-}catch(e){
-
-console.log(
-"KYC LINK ERROR",
-e.response?.data
-);
-
-}
-
-//////////////////////////////////////////////////////
-// ACCOUNT STATUS
+// FETCH STATUS
 //////////////////////////////////////////////////////
 
 const finalData=
@@ -287,7 +211,7 @@ await axios.get(
 
 {auth:AUTH}
 
-);
+)
 
 res.json({
 
@@ -298,12 +222,13 @@ accountId,
 status:
 finalData.data.status,
 
-kycLink,
+dashboard_access:
+finalData.data.dashboard_access,
 
 data:
 finalData.data
 
-});
+})
 
 }catch(err){
 
@@ -314,10 +239,9 @@ err.message,
 null,
 2
 )
-);
+)
 
-res.status(500)
-.json({
+res.status(500).json({
 
 success:false,
 
@@ -325,7 +249,7 @@ error:
 err.response?.data||
 err.message
 
-});
+})
 
 }
 
@@ -336,44 +260,34 @@ err.message
 //////////////////////////////////////////////////////
 
 app.post(
+
 "/create-mandate-link",
+
 async(req,res)=>{
 
 try{
 
 const{
 
+name,
+mobile,
 amount,
 tenure,
 frequency,
+dealer_name,
 dealerAccountId
 
 }=req.body;
 
-let period=
-"monthly";
+const emi=
+parseInt(
+Number(amount)*100
+);
 
-switch(
-frequency.toLowerCase()
-){
-
-case "daily":
-period="weekly";
-break;
-
-case "weekly":
-period="weekly";
-break;
-
-case "monthly":
-period="monthly";
-break;
-
-case "yearly":
-period="yearly";
-break;
-
-}
+const count=
+parseInt(
+tenure||12
+);
 
 const plan=
 
@@ -383,7 +297,8 @@ await axios.post(
 
 {
 
-period:period,
+period:
+frequency.toLowerCase(),
 
 interval:1,
 
@@ -391,8 +306,7 @@ item:{
 
 name:"Defendzo EMI",
 
-amount:
-Number(amount)*100,
+amount:emi,
 
 currency:"INR"
 
@@ -402,7 +316,7 @@ currency:"INR"
 
 {auth:AUTH}
 
-);
+)
 
 const sub=
 
@@ -417,8 +331,7 @@ plan.data.id,
 
 customer_notify:1,
 
-total_count:
-tenure||12,
+total_count:count,
 
 notes:{
 
@@ -430,106 +343,137 @@ dealerAccountId
 
 {auth:AUTH}
 
-);
+)
+
+const link=
+
+`https://defendzo.web.app/mandate?sub_id=${sub.data.id}`
 
 res.json({
 
 success:true,
+link
 
-subscription_id:
-sub.data.id
+})
 
-});
+}catch(err){
 
-}catch(e){
-
-res.status(500)
-.json({
+res.status(500).json({
 
 success:false,
 
 error:
-e.response?.data||
-e.message
+err.response?.data||
+err.message
 
-});
-
-}
-
-});
-
-//////////////////////////////////////////////////////
-// WEBHOOK VERIFY
-//////////////////////////////////////////////////////
-
-function verify(req){
-
-const sig=
-
-req.headers[
-"x-razorpay-signature"
-];
-
-const expected=
-
-crypto
-.createHmac(
-"sha256",
-WEBHOOK_SECRET
-)
-.update(
-req.rawBody
-)
-.digest(
-"hex"
-);
-
-return sig===expected;
+})
 
 }
+
+});
 
 //////////////////////////////////////////////////////
 // WEBHOOK
 //////////////////////////////////////////////////////
 
 app.post(
+
 "/webhook",
+
 async(req,res)=>{
 
 try{
 
-if(!verify(req)){
+const event=
+req.body.event;
 
-return res
-.status(401)
-.send("invalid");
+if(
+event==="invoice.paid"
+){
+
+const invoice=
+
+req.body.payload
+.invoice.entity;
+
+const amount=
+invoice.amount;
+
+const subscriptionId=
+invoice.subscription_id;
+
+const sub=
+
+await axios.get(
+
+`${RAZORPAY_BASE}/subscriptions/${subscriptionId}`,
+
+{auth:AUTH}
+
+)
+
+const account=
+
+sub.data.notes
+?.dealerAccountId;
+
+
+if(account){
+
+const transfer=
+
+await axios.post(
+
+`${RAZORPAY_BASE}/transfers`,
+
+{
+
+account:account,
+
+amount:amount,
+
+currency:"INR"
+
+},
+
+{auth:AUTH}
+
+)
+
+console.log(
+"TRANSFER:",
+transfer.data.id
+)
 
 }
 
-console.log(
-req.body.event
-);
+}
 
-res.send("ok");
+res.send("ok")
 
 }catch(e){
 
+console.log(
+e.response?.data||
+e.message
+)
+
 res.status(500)
-.send("error");
+.send("error")
 
 }
 
-});
+})
 
 //////////////////////////////////////////////////////
 
-app.listen(
-PORT||3000,
-()=>{
+const PORT=
+process.env.PORT||3000;
+
+app.listen(PORT,()=>{
 
 console.log(
-"Running:",
-PORT||3000
-);
+"Running on "+PORT
+)
 
-});
+})
