@@ -82,6 +82,9 @@ name,
 email,
 mobile,
 
+businessName,
+businessType,
+
 bankAccount,
 ifsc,
 beneficiaryName,
@@ -95,14 +98,18 @@ shop_name
 }=req.body;
 
 if(
-
 !dealerUid ||
 !name ||
 !email ||
 !mobile ||
+
+!businessName ||
+!businessType ||
+
 !bankAccount ||
 !ifsc ||
 !beneficiaryName ||
+
 !city ||
 !state ||
 !pincode
@@ -118,6 +125,21 @@ error:"Missing Fields"
 });
 
 }
+console.log({
+
+dealerUid,
+name,
+email,
+mobile,
+
+businessName,
+businessType,
+
+bankAccount,
+ifsc,
+beneficiaryName
+
+});
 
 //////////////////////////////////////////////////////
 // CREATE LINKED ACCOUNT
@@ -142,13 +164,13 @@ reference_id:
 .substring(0,20),
 
 legal_business_name:
-shop_name||name,
+businessName || shop_name || name,
 
 contact_name:
 name,
 
 business_type:
-"individual",
+businessType,
 
 profile:{
 
@@ -163,7 +185,7 @@ addresses:{
 registered:{
 
 street1:
-shop_name||"Shop",
+businessName || shop_name || "Shop",
 
 street2:
 city,
@@ -229,12 +251,49 @@ await axios.patch(
 
 {
 
+contact_name:name,
+
+profile:{
+
+business_model:
+"Loan collection services",
+
+addresses:{
+
+registered:{
+
+street1:
+businessName || "Shop",
+
+city:
+city,
+
+state:
+state,
+
+postal_code:
+pincode,
+
+country:"IN"
+
+}
+
+}
+
+},
+
+legal_info:{
+
+pan:"ABCDE1234F"
+
+},
+
 bank_account:{
 
-name:
+beneficiary_name:
 beneficiaryName,
 
-ifsc:
+ifsc_code:
 ifsc,
 
 account_number:
