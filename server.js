@@ -1,3 +1,4 @@
+```javascript
 require("dotenv").config();
 
 const express = require("express");
@@ -5,6 +6,10 @@ const axios = require("axios");
 const crypto = require("crypto");
 
 const app = express();
+
+//////////////////////////////////////////////////////
+// RAW BODY
+//////////////////////////////////////////////////////
 
 app.use(express.json({
 
@@ -57,7 +62,7 @@ const RAZORPAY_BASE =
 "https://api.razorpay.com/v1";
 
 //////////////////////////////////////////////////////
-// TEST
+// ROOT
 //////////////////////////////////////////////////////
 
 app.get("/",(req,res)=>{
@@ -69,7 +74,17 @@ app.get("/",(req,res)=>{
 });
 
 //////////////////////////////////////////////////////
-// CREATE LINKED ACCOUNT
+// ENGLISH CHECK
+//////////////////////////////////////////////////////
+
+function isEnglish(text){
+
+  return /^[A-Za-z0-9 .]+$/.test(text);
+
+}
+
+//////////////////////////////////////////////////////
+// CREATE DEALER ACCOUNT
 //////////////////////////////////////////////////////
 
 app.post(
@@ -86,6 +101,9 @@ app.post(
         name,
         email,
         mobile,
+        city,
+        state,
+        pincode,
         shop_name
 
       } = req.body;
@@ -99,7 +117,10 @@ app.post(
         !dealerUid ||
         !name ||
         !email ||
-        !mobile
+        !mobile ||
+        !city ||
+        !state ||
+        !pincode
 
       ){
 
@@ -113,16 +134,47 @@ app.post(
       }
 
       //////////////////////////////////////////////////
+      // ENGLISH VALIDATION
+      //////////////////////////////////////////////////
+
+      if(!isEnglish(name)){
+
+        return res.status(400).json({
+
+          success:false,
+          error:"Name must be in English"
+
+        });
+
+      }
+
+      if(
+
+        shop_name &&
+        !isEnglish(shop_name)
+
+      ){
+
+        return res.status(400).json({
+
+          success:false,
+          error:"Shop name must be in English"
+
+        });
+
+      }
+
+      //////////////////////////////////////////////////
       // PAYLOAD
       //////////////////////////////////////////////////
 
       const payload = {
 
-        email:email,
+        email: email,
 
-        phone:mobile,
+        phone: mobile,
 
-        type:"route",
+        type: "route",
 
         reference_id:
         (dealerUid || "dealer")
@@ -131,15 +183,60 @@ app.post(
         legal_business_name:
         shop_name || name,
 
-        contact_name:name,
+        contact_name:
+        name,
 
-        business_type:"individual"
+        business_type:
+        "individual",
+
+        profile: {
+
+          category:
+          "financial_services",
+
+          subcategory:
+          "lending",
+
+          addresses: {
+
+            registered: {
+
+              street1:
+              "Shop Address",
+
+              street2:
+              "Near Market",
+
+              city:
+              city,
+
+              state:
+              state,
+
+              postal_code:
+              pincode,
+
+              country:
+              "IN"
+
+            }
+
+          }
+
+        }
 
       };
 
       console.log(
+
         "PAYLOAD =>",
-        JSON.stringify(payload,null,2)
+
+        JSON.stringify(
+          payload,
+          null,
+          2
+        )
+
       );
 
       //////////////////////////////////////////////////
@@ -161,8 +258,11 @@ app.post(
       );
 
       console.log(
+
         "ACCOUNT CREATED =>",
+
         linkedRes.data.id
+
       );
 
       //////////////////////////////////////////////////
@@ -216,7 +316,7 @@ app.post(
 );
 
 //////////////////////////////////////////////////////
-// CREATE MANDATE LINK
+// CREATE MANDATE
 //////////////////////////////////////////////////////
 
 app.post(
@@ -269,24 +369,33 @@ app.post(
       const freq =
       frequency.toLowerCase();
 
-      let period = "monthly";
+      let period =
+      "monthly";
 
       switch(freq){
 
         case "daily":
+
           period = "weekly";
+
           break;
 
         case "weekly":
+
           period = "weekly";
+
           break;
 
         case "monthly":
+
           period = "monthly";
+
           break;
 
         case "yearly":
+
           period = "yearly";
+
           break;
 
       }
@@ -317,17 +426,21 @@ app.post(
 
         {
 
-          period:period,
+          period:
+          period,
 
           interval:1,
 
           item:{
 
-            name:"Defendzo EMI",
+            name:
+            "Defendzo EMI",
 
-            amount:emiAmount,
+            amount:
+            emiAmount,
 
-            currency:"INR"
+            currency:
+            "INR"
 
           }
 
@@ -342,7 +455,7 @@ app.post(
       );
 
       //////////////////////////////////////////////////
-      // START DATE
+      // DATE
       //////////////////////////////////////////////////
 
       let startTimestamp =
@@ -511,11 +624,17 @@ function verifyWebhook(req){
 
     )
 
-    .update(req.rawBody)
+    .update(
+      req.rawBody
+    )
 
-    .digest("hex");
+    .digest(
+      "hex"
+    );
 
-    return signature === expected;
+    return(
+      signature === expected
+    );
 
   }catch{
 
@@ -623,11 +742,13 @@ app.post(
               amount:
               amount,
 
-              currency:"INR",
+              currency:
+              "INR",
 
               notes:{
 
-                type:"EMI_TRANSFER"
+                type:
+                "EMI_TRANSFER"
 
               }
 
@@ -653,7 +774,8 @@ app.post(
 
       }
 
-      res.status(200)
+      res
+      .status(200)
       .send("ok");
 
     }catch(err){
@@ -674,7 +796,8 @@ app.post(
 
       );
 
-      res.status(500)
+      res
+      .status(500)
       .send("error");
 
     }
@@ -684,7 +807,7 @@ app.post(
 );
 
 //////////////////////////////////////////////////////
-// START SERVER
+// START
 //////////////////////////////////////////////////////
 
 app.listen(
@@ -702,3 +825,4 @@ app.listen(
   }
 
 );
+```
