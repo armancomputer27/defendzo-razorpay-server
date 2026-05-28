@@ -19,7 +19,7 @@ app.get("/", (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// CREATE DEALER LINKED ACCOUNT (Fixed)
+// CREATE DEALER LINKED ACCOUNT (Latest Fixed)
 //////////////////////////////////////////////////////
 app.post("/create-dealer-account", async (req, res) => {
     try {
@@ -28,19 +28,16 @@ app.post("/create-dealer-account", async (req, res) => {
             name,
             email,
             mobile,
-            bankAccount,
-            ifsc,
-            beneficiaryName,
             city,
             state,
             pincode,
             shop_name
         } = req.body;
 
-        if (!dealerUid || !name || !email || !mobile || !bankAccount || !ifsc || !beneficiaryName) {
+        if (!dealerUid || !name || !email || !mobile) {
             return res.status(400).json({
                 success: false,
-                error: "Missing required fields: name, email, mobile, bankAccount, ifsc, beneficiaryName"
+                error: "Missing required fields: dealerUid, name, email, mobile"
             });
         }
 
@@ -59,12 +56,6 @@ app.post("/create-dealer-account", async (req, res) => {
             legal_business_name: (shop_name || name).trim(),
             contact_name: cleanContactName,
             business_type: "individual",
-
-            bank_account: {
-                account_number: bankAccount.trim(),
-                ifsc: ifsc.toUpperCase().trim(),
-                beneficiary_name: beneficiaryName.trim()
-            },
 
             profile: {
                 category: "financial_services",
@@ -144,7 +135,6 @@ app.post("/create-mandate-link", async (req, res) => {
             case "yearly": planPeriod = "yearly"; break;
         }
 
-        // PLAN
         const planRes = await axios.post(
             `${RAZORPAY_BASE}/plans`,
             {
@@ -164,7 +154,6 @@ app.post("/create-mandate-link", async (req, res) => {
             }
         );
 
-        // START DATE
         let startTimestamp = Math.floor(Date.now() / 1000);
         if (start_date) {
             try {
@@ -174,7 +163,6 @@ app.post("/create-mandate-link", async (req, res) => {
             } catch { }
         }
 
-        // SUBSCRIPTION
         const subRes = await axios.post(
             `${RAZORPAY_BASE}/subscriptions`,
             {
