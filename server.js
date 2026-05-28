@@ -1,50 +1,24 @@
-```javascript
 require("dotenv").config();
 
 const express = require("express");
 const axios = require("axios");
-const crypto = require("crypto");
 
 const app = express();
 
-//////////////////////////////////////////////////////
-// RAW BODY
-//////////////////////////////////////////////////////
-
-app.use(express.json({
-
-  verify:(req,res,buf)=>{
-
-    req.rawBody = buf.toString();
-
-  }
-
-}));
+app.use(express.json());
 
 //////////////////////////////////////////////////////
 // ENV
 //////////////////////////////////////////////////////
 
-const {
+const PORT = process.env.PORT || 3000;
 
-  RZP_KEY_ID,
-  RZP_KEY_SECRET,
-  WEBHOOK_SECRET,
-  PORT
+const RZP_KEY_ID = process.env.RZP_KEY_ID;
+const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
 
-} = process.env;
-
-if(
-
-  !RZP_KEY_ID ||
-  !RZP_KEY_SECRET
-
-){
-
-  console.log("❌ Missing ENV");
-
+if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
+  console.log("❌ ENV Missing");
   process.exit(1);
-
 }
 
 //////////////////////////////////////////////////////
@@ -52,51 +26,32 @@ if(
 //////////////////////////////////////////////////////
 
 const AUTH = {
-
-  username:RZP_KEY_ID,
-  password:RZP_KEY_SECRET
-
+  username: RZP_KEY_ID,
+  password: RZP_KEY_SECRET
 };
 
 const RAZORPAY_BASE =
-"https://api.razorpay.com/v1";
+  "https://api.razorpay.com/v1";
 
 //////////////////////////////////////////////////////
-// ROOT
+// TEST
 //////////////////////////////////////////////////////
 
-app.get("/",(req,res)=>{
-
-  res.send(
-    "✅ Defendzo Server Running"
-  );
-
+app.get("/", (req, res) => {
+  res.send("✅ Defendzo Running");
 });
 
 //////////////////////////////////////////////////////
-// ENGLISH CHECK
-//////////////////////////////////////////////////////
-
-function isEnglish(text){
-
-  return /^[A-Za-z0-9 .]+$/.test(text);
-
-}
-
-//////////////////////////////////////////////////////
-// CREATE DEALER ACCOUNT
+// CREATE LINKED ACCOUNT
 //////////////////////////////////////////////////////
 
 app.post(
-
   "/create-dealer-account",
+  async (req, res) => {
 
-  async(req,res)=>{
+    try {
 
-    try{
-
-      const{
-
+      const {
         dealerUid,
         name,
         email,
@@ -105,15 +60,13 @@ app.post(
         state,
         pincode,
         shop_name
-
       } = req.body;
 
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
       // VALIDATION
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
 
-      if(
-
+      if (
         !dealerUid ||
         !name ||
         !email ||
@@ -121,52 +74,30 @@ app.post(
         !city ||
         !state ||
         !pincode
-
-      ){
+      ) {
 
         return res.status(400).json({
-
-          success:false,
-          error:"Missing fields"
-
+          success: false,
+          error: "Missing fields"
         });
 
       }
 
-      //////////////////////////////////////////////////
-      // ENGLISH VALIDATION
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
+      // ENGLISH ONLY
+      //////////////////////////////////////////////////////
 
-      if(!isEnglish(name)){
+      const cleanName = name
+        .replace(/[^a-zA-Z ]/g, "")
+        .trim();
 
-        return res.status(400).json({
+      const cleanShop = (shop_name || "Shop")
+        .replace(/[^a-zA-Z0-9 ]/g, "")
+        .trim();
 
-          success:false,
-          error:"Name must be in English"
-
-        });
-
-      }
-
-      if(
-
-        shop_name &&
-        !isEnglish(shop_name)
-
-      ){
-
-        return res.status(400).json({
-
-          success:false,
-          error:"Shop name must be in English"
-
-        });
-
-      }
-
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
       // PAYLOAD
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
 
       const payload = {
 
@@ -177,47 +108,47 @@ app.post(
         type: "route",
 
         reference_id:
-        (dealerUid || "dealer")
-        .substring(0,20),
+          (dealerUid || "dealer")
+          .substring(0, 20),
 
         legal_business_name:
-        shop_name || name,
+          cleanShop || cleanName,
 
         contact_name:
-        name,
+          cleanName,
 
         business_type:
-        "individual",
+          "individual",
 
         profile: {
 
           category:
-          "financial_services",
+            "financial_services",
 
           subcategory:
-          "lending",
+            "lending",
 
           addresses: {
 
             registered: {
 
               street1:
-              "Shop Address",
+                cleanShop,
 
               street2:
-              "Near Market",
+                city,
 
               city:
-              city,
+                city,
 
               state:
-              state,
+                state,
 
               postal_code:
-              pincode,
+                pincode,
 
               country:
-              "IN"
+                "IN"
 
             }
 
@@ -228,91 +159,61 @@ app.post(
       };
 
       console.log(
-
         "PAYLOAD =>",
-
-        JSON.stringify(
-          payload,
-          null,
-          2
-        )
-
+        JSON.stringify(payload, null, 2)
       );
 
-      //////////////////////////////////////////////////
-      // CREATE ACCOUNT
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
+      // API CALL
+      //////////////////////////////////////////////////////
 
-      const linkedRes = await axios.post(
-
+      const response = await axios.post(
         "https://api.razorpay.com/v2/accounts",
-
         payload,
-
         {
-
-          auth:AUTH
-
+          auth: AUTH
         }
-
       );
 
-      console.log(
-
-        "ACCOUNT CREATED =>",
-
-        linkedRes.data.id
-
-      );
-
-      //////////////////////////////////////////////////
-      // RESPONSE
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
+      // SUCCESS
+      //////////////////////////////////////////////////////
 
       res.json({
 
-        success:true,
+        success: true,
 
         accountId:
-        linkedRes.data.id,
+          response.data.id,
 
         data:
-        linkedRes.data
+          response.data
 
       });
 
-    }catch(err){
+    } catch (err) {
 
       console.log(
-
         "CREATE ACCOUNT ERROR =>",
-
         JSON.stringify(
-
-          err.response?.data ||
-          err.message,
-
+          err.response?.data || err.message,
           null,
           2
-
         )
-
       );
 
       res.status(500).json({
 
-        success:false,
+        success: false,
 
         error:
-        err.response?.data ||
-        err.message
+          err.response?.data || err.message
 
       });
 
     }
 
   }
-
 );
 
 //////////////////////////////////////////////////////
@@ -320,105 +221,70 @@ app.post(
 //////////////////////////////////////////////////////
 
 app.post(
-
   "/create-mandate-link",
+  async (req, res) => {
 
-  async(req,res)=>{
+    try {
 
-    try{
-
-      const{
-
+      const {
         name,
         mobile,
         amount,
         tenure,
         frequency,
         dealer_name,
-        dealerAccountId,
-        start_date
-
+        dealerAccountId
       } = req.body;
 
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
       // VALIDATION
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
 
-      if(
-
+      if (
         !name ||
         !mobile ||
         !amount ||
         !frequency
-
-      ){
+      ) {
 
         return res.status(400).json({
-
-          success:false,
-          error:"Missing fields"
-
+          success: false,
+          error: "Missing fields"
         });
 
       }
 
-      //////////////////////////////////////////////////
-      // FREQUENCY
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
+      // PLAN PERIOD
+      //////////////////////////////////////////////////////
 
-      const freq =
-      frequency.toLowerCase();
+      let period = "monthly";
 
-      let period =
-      "monthly";
-
-      switch(freq){
+      switch (
+        frequency.toLowerCase()
+      ) {
 
         case "daily":
-
           period = "weekly";
-
           break;
 
         case "weekly":
-
           period = "weekly";
-
           break;
 
         case "monthly":
-
           period = "monthly";
-
           break;
 
         case "yearly":
-
           period = "yearly";
-
           break;
 
       }
 
-      //////////////////////////////////////////////////
-      // EMI
-      //////////////////////////////////////////////////
-
-      const emiAmount =
-
-      parseInt(
-        Number(amount) * 100
-      );
-
-      const totalCount =
-
-      parseInt(
-        tenure || 12
-      );
-
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
       // CREATE PLAN
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
 
       const planRes = await axios.post(
 
@@ -426,72 +292,34 @@ app.post(
 
         {
 
-          period:
-          period,
+          period: period,
 
-          interval:1,
+          interval: 1,
 
-          item:{
+          item: {
 
             name:
-            "Defendzo EMI",
+              "Defendzo EMI",
 
             amount:
-            emiAmount,
+              parseInt(amount) * 100,
 
             currency:
-            "INR"
+              "INR"
 
           }
 
         },
 
         {
-
-          auth:AUTH
-
+          auth: AUTH
         }
 
       );
 
-      //////////////////////////////////////////////////
-      // DATE
-      //////////////////////////////////////////////////
-
-      let startTimestamp =
-
-      Math.floor(
-        Date.now()/1000
-      );
-
-      if(start_date){
-
-        try{
-
-          const parts =
-          start_date.split("-");
-
-          const dt = new Date(
-
-            parts[2],
-            parts[1]-1,
-            parts[0]
-
-          );
-
-          startTimestamp =
-
-          Math.floor(
-            dt.getTime()/1000
-          );
-
-        }catch{}
-
-      }
-
-      //////////////////////////////////////////////////
-      // SUBSCRIPTION
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
+      // CREATE SUBSCRIPTION
+      //////////////////////////////////////////////////////
 
       const subRes = await axios.post(
 
@@ -500,329 +328,117 @@ app.post(
         {
 
           plan_id:
-          planRes.data.id,
-
-          customer_notify:1,
+            planRes.data.id,
 
           total_count:
-          totalCount,
+            parseInt(tenure || 12),
 
-          start_at:
-          startTimestamp,
+          customer_notify:
+            1,
 
-          notes:{
+          notes: {
 
             dealerAccountId:
-            dealerAccountId || ""
+              dealerAccountId || ""
 
           }
 
         },
 
         {
-
-          auth:AUTH
-
+          auth: AUTH
         }
 
       );
 
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
       // LINK
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
 
       const link =
 
-      `https://defendzo.web.app/mandate`+
+        `https://defendzo.web.app/mandate` +
 
-      `?sub_id=${subRes.data.id}`+
+        `?sub_id=${subRes.data.id}` +
 
-      `&dealer_name=${encodeURIComponent(
-        dealer_name || "Dealer"
-      )}`+
+        `&dealer_name=${encodeURIComponent(
+          dealer_name || "Dealer"
+        )}` +
 
-      `&customer_name=${encodeURIComponent(
-        name
-      )}`+
+        `&customer_name=${encodeURIComponent(
+          name
+        )}` +
 
-      `&mobile=${mobile}`+
+        `&mobile=${mobile}` +
 
-      `&amount=${amount}`;
+        `&amount=${amount}`;
 
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
       // RESPONSE
-      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
 
       res.json({
 
-        success:true,
+        success: true,
 
         subscription_id:
-        subRes.data.id,
+          subRes.data.id,
 
         link
 
       });
 
-    }catch(err){
+    } catch (err) {
 
       console.log(
-
         "MANDATE ERROR =>",
-
         JSON.stringify(
-
-          err.response?.data ||
-          err.message,
-
+          err.response?.data || err.message,
           null,
           2
-
         )
-
       );
 
       res.status(500).json({
 
-        success:false,
+        success: false,
 
         error:
-        err.response?.data ||
-        err.message
+          err.response?.data || err.message
 
       });
 
     }
 
   }
-
 );
-
-//////////////////////////////////////////////////////
-// WEBHOOK VERIFY
-//////////////////////////////////////////////////////
-
-function verifyWebhook(req){
-
-  try{
-
-    const signature =
-
-    req.headers[
-      "x-razorpay-signature"
-    ];
-
-    const expected =
-
-    crypto
-
-    .createHmac(
-
-      "sha256",
-
-      WEBHOOK_SECRET
-
-    )
-
-    .update(
-      req.rawBody
-    )
-
-    .digest(
-      "hex"
-    );
-
-    return(
-      signature === expected
-    );
-
-  }catch{
-
-    return false;
-
-  }
-
-}
 
 //////////////////////////////////////////////////////
 // WEBHOOK
 //////////////////////////////////////////////////////
 
 app.post(
-
   "/webhook",
+  (req, res) => {
 
-  async(req,res)=>{
+    console.log(
+      "EVENT =>",
+      req.body.event
+    );
 
-    try{
-
-      //////////////////////////////////////////////////
-      // VERIFY
-      //////////////////////////////////////////////////
-
-      if(
-
-        WEBHOOK_SECRET &&
-        !verifyWebhook(req)
-
-      ){
-
-        return res
-        .status(401)
-        .send("invalid");
-
-      }
-
-      const event =
-      req.body.event;
-
-      console.log(
-        "EVENT =>",
-        event
-      );
-
-      //////////////////////////////////////////////////
-      // EMI PAID
-      //////////////////////////////////////////////////
-
-      if(
-        event === "invoice.paid"
-      ){
-
-        const invoice =
-
-        req.body.payload
-        .invoice
-        .entity;
-
-        const amount =
-        invoice.amount;
-
-        const subscriptionId =
-        invoice.subscription_id;
-
-        //////////////////////////////////////////////////
-        // FETCH SUB
-        //////////////////////////////////////////////////
-
-        const subRes = await axios.get(
-
-          `${RAZORPAY_BASE}/subscriptions/${subscriptionId}`,
-
-          {
-
-            auth:AUTH
-
-          }
-
-        );
-
-        const dealerAccountId =
-
-        subRes.data.notes
-        ?.dealerAccountId;
-
-        //////////////////////////////////////////////////
-        // TRANSFER
-        //////////////////////////////////////////////////
-
-        if(dealerAccountId){
-
-          const transferRes =
-
-          await axios.post(
-
-            `${RAZORPAY_BASE}/transfers`,
-
-            {
-
-              account:
-              dealerAccountId,
-
-              amount:
-              amount,
-
-              currency:
-              "INR",
-
-              notes:{
-
-                type:
-                "EMI_TRANSFER"
-
-              }
-
-            },
-
-            {
-
-              auth:AUTH
-
-            }
-
-          );
-
-          console.log(
-
-            "TRANSFER SUCCESS =>",
-
-            transferRes.data.id
-
-          );
-
-        }
-
-      }
-
-      res
-      .status(200)
-      .send("ok");
-
-    }catch(err){
-
-      console.log(
-
-        "WEBHOOK ERROR =>",
-
-        JSON.stringify(
-
-          err.response?.data ||
-          err.message,
-
-          null,
-          2
-
-        )
-
-      );
-
-      res
-      .status(500)
-      .send("error");
-
-    }
+    res.send("ok");
 
   }
-
 );
 
 //////////////////////////////////////////////////////
 // START
 //////////////////////////////////////////////////////
 
-app.listen(
+app.listen(PORT, () => {
 
-  PORT || 3000,
+  console.log(
+    `🚀 Running on ${PORT}`
+  );
 
-  ()=>{
-
-    console.log(
-
-      `🚀 Running on ${PORT || 3000}`
-
-    );
-
-  }
-
-);
-```
+});
