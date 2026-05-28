@@ -215,6 +215,149 @@ app.post(
 
   }
 );
+//////////////////////////////////////////////////////
+// UPDATE DEALER BANK KYC
+//////////////////////////////////////////////////////
+
+app.post(
+  "/update-dealer-bank",
+  async (req, res) => {
+
+    try {
+
+      const {
+        accountId,
+        bankAccount,
+        ifsc,
+        beneficiaryName
+      } = req.body;
+
+      //////////////////////////////////////////////////////
+      // VALIDATION
+      //////////////////////////////////////////////////////
+
+      if (
+        !accountId ||
+        !bankAccount ||
+        !ifsc ||
+        !beneficiaryName
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          error: "Missing fields"
+        });
+
+      }
+
+      //////////////////////////////////////////////////////
+      // ENABLE ROUTE PRODUCT
+      //////////////////////////////////////////////////////
+
+      try {
+
+        await axios.post(
+
+          `https://api.razorpay.com/v2/accounts/${accountId}/products`,
+
+          {
+            product_name: "route",
+            tnc_accepted: true
+          },
+
+          {
+            auth: AUTH
+          }
+
+        );
+
+      } catch (e) {
+
+        console.log(
+          "ROUTE MAY ALREADY ENABLED"
+        );
+
+      }
+
+      //////////////////////////////////////////////////////
+      // WAIT
+      //////////////////////////////////////////////////////
+
+      await new Promise(
+        r => setTimeout(r, 3000)
+      );
+
+      //////////////////////////////////////////////////////
+      // UPDATE BANK
+      //////////////////////////////////////////////////////
+
+      const updateRes = await axios.patch(
+
+        `https://api.razorpay.com/v2/accounts/${accountId}/products/route`,
+
+        {
+
+          settlements: {
+
+            account_number:
+              bankAccount,
+
+            ifsc_code:
+              ifsc,
+
+            beneficiary_name:
+              beneficiaryName
+
+          }
+
+        },
+
+        {
+          auth: AUTH
+        }
+
+      );
+
+      //////////////////////////////////////////////////////
+      // SUCCESS
+      //////////////////////////////////////////////////////
+
+      res.json({
+
+        success: true,
+
+        message:
+          "Bank Updated",
+
+        data:
+          updateRes.data
+
+      });
+
+    } catch (err) {
+
+      console.log(
+        "BANK UPDATE ERROR =>",
+        JSON.stringify(
+          err.response?.data || err.message,
+          null,
+          2
+        )
+      );
+
+      res.status(500).json({
+
+        success: false,
+
+        error:
+          err.response?.data || err.message
+
+      });
+
+    }
+
+  }
+);
 
 //////////////////////////////////////////////////////
 // CREATE MANDATE
