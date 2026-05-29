@@ -11,14 +11,24 @@ app.use(express.json());
 // ENV
 //////////////////////////////////////////////////////
 
-const PORT = process.env.PORT || 3000;
+const PORT =
+  process.env.PORT || 3000;
 
-const RZP_KEY_ID = process.env.RZP_KEY_ID;
-const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
+const RZP_KEY_ID =
+  process.env.RZP_KEY_ID;
 
-if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
+const RZP_KEY_SECRET =
+  process.env.RZP_KEY_SECRET;
+
+if (
+  !RZP_KEY_ID ||
+  !RZP_KEY_SECRET
+) {
+
   console.log("❌ ENV Missing");
+
   process.exit(1);
+
 }
 
 //////////////////////////////////////////////////////
@@ -26,19 +36,35 @@ if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
 //////////////////////////////////////////////////////
 
 const AUTH = {
-  username: RZP_KEY_ID,
-  password: RZP_KEY_SECRET
+
+  username:
+    RZP_KEY_ID,
+
+  password:
+    RZP_KEY_SECRET
+
 };
 
-const RAZORPAY_BASE =
+//////////////////////////////////////////////////////
+// BASE
+//////////////////////////////////////////////////////
+
+const RAZORPAY_V1 =
   "https://api.razorpay.com/v1";
+
+const RAZORPAY_V2 =
+  "https://api.razorpay.com/v2";
 
 //////////////////////////////////////////////////////
 // TEST
 //////////////////////////////////////////////////////
 
 app.get("/", (req, res) => {
-  res.send("✅ Defendzo Running");
+
+  res.send(
+    "✅ Defendzo Running"
+  );
+
 });
 
 //////////////////////////////////////////////////////
@@ -46,12 +72,15 @@ app.get("/", (req, res) => {
 //////////////////////////////////////////////////////
 
 app.post(
+
   "/create-dealer-account",
+
   async (req, res) => {
 
     try {
 
       const {
+
         dealerUid,
         name,
         email,
@@ -60,6 +89,7 @@ app.post(
         state,
         pincode,
         shop_name
+
       } = req.body;
 
       //////////////////////////////////////////////////////
@@ -67,6 +97,7 @@ app.post(
       //////////////////////////////////////////////////////
 
       if (
+
         !dealerUid ||
         !name ||
         !email ||
@@ -74,29 +105,38 @@ app.post(
         !city ||
         !state ||
         !pincode
+
       ) {
 
         return res.status(400).json({
+
           success: false,
-          error: "Missing fields"
+
+          error:
+            "Missing fields"
+
         });
 
       }
 
       //////////////////////////////////////////////////////
-      // ENGLISH ONLY
+      // CLEAN
       //////////////////////////////////////////////////////
 
       const cleanName = name
+
         .replace(/[^a-zA-Z ]/g, "")
         .trim();
 
-      const cleanShop = (shop_name || "Shop")
+      const cleanShop =
+
+        (shop_name || "Shop")
+
         .replace(/[^a-zA-Z0-9 ]/g, "")
         .trim();
 
       //////////////////////////////////////////////////////
-      // PAYLOAD
+      // CREATE ACCOUNT
       //////////////////////////////////////////////////////
 
       const payload = {
@@ -159,21 +199,79 @@ app.post(
       };
 
       console.log(
-        "PAYLOAD =>",
-        JSON.stringify(payload, null, 2)
+        "CREATE ACCOUNT PAYLOAD =>",
+        JSON.stringify(
+          payload,
+          null,
+          2
+        )
       );
 
+      const accountRes =
+        await axios.post(
+
+          `${RAZORPAY_V2}/accounts`,
+
+          payload,
+
+          {
+            auth: AUTH
+          }
+
+        );
+
       //////////////////////////////////////////////////////
-      // API CALL
+      // ACCOUNT ID
       //////////////////////////////////////////////////////
 
-      const response = await axios.post(
-        "https://api.razorpay.com/v2/accounts",
-        payload,
-        {
-          auth: AUTH
-        }
-      );
+      const accountId =
+        accountRes.data.id;
+
+      //////////////////////////////////////////////////////
+      // ENABLE ROUTE
+      //////////////////////////////////////////////////////
+
+      try {
+
+        const routeRes =
+          await axios.post(
+
+            `${RAZORPAY_V2}/accounts/${accountId}/products`,
+
+            {
+
+              product_name:
+                "route",
+
+              tnc_accepted:
+                true
+
+            },
+
+            {
+              auth: AUTH
+            }
+
+          );
+
+        console.log(
+          "ROUTE ENABLED =>",
+          routeRes.data.id
+        );
+
+      } catch (e) {
+
+        console.log(
+          "ROUTE ENABLE ERROR =>",
+          JSON.stringify(
+            e.response?.data ||
+            e.message,
+            null,
+            2
+          )
+        );
+
+      }
 
       //////////////////////////////////////////////////////
       // SUCCESS
@@ -184,22 +282,29 @@ app.post(
         success: true,
 
         accountId:
-          response.data.id,
+          accountId,
 
         data:
-          response.data
+          accountRes.data
 
       });
 
     } catch (err) {
 
       console.log(
+
         "CREATE ACCOUNT ERROR =>",
+
         JSON.stringify(
-          err.response?.data || err.message,
+
+          err.response?.data ||
+          err.message,
+
           null,
           2
+
         )
+
       );
 
       res.status(500).json({
@@ -207,29 +312,36 @@ app.post(
         success: false,
 
         error:
-          err.response?.data || err.message
+          err.response?.data ||
+          err.message
 
       });
 
     }
 
   }
+
 );
+
 //////////////////////////////////////////////////////
-// UPDATE DEALER BANK KYC
+// UPDATE DEALER BANK
 //////////////////////////////////////////////////////
 
 app.post(
+
   "/update-dealer-bank",
+
   async (req, res) => {
 
     try {
 
       const {
+
         accountId,
         bankAccount,
         ifsc,
         beneficiaryName
+
       } = req.body;
 
       //////////////////////////////////////////////////////
@@ -237,45 +349,22 @@ app.post(
       //////////////////////////////////////////////////////
 
       if (
+
         !accountId ||
         !bankAccount ||
         !ifsc ||
         !beneficiaryName
+
       ) {
 
         return res.status(400).json({
+
           success: false,
-          error: "Missing fields"
+
+          error:
+            "Missing fields"
+
         });
-
-      }
-
-      //////////////////////////////////////////////////////
-      // ENABLE ROUTE PRODUCT
-      //////////////////////////////////////////////////////
-
-      try {
-
-        await axios.post(
-
-          `https://api.razorpay.com/v2/accounts/${accountId}/products`,
-
-          {
-            product_name: "route",
-            tnc_accepted: true
-          },
-
-          {
-            auth: AUTH
-          }
-
-        );
-
-      } catch (e) {
-
-        console.log(
-          "ROUTE MAY ALREADY ENABLED"
-        );
 
       }
 
@@ -288,35 +377,36 @@ app.post(
       );
 
       //////////////////////////////////////////////////////
-      // UPDATE BANK
+      // UPDATE ROUTE PRODUCT
       //////////////////////////////////////////////////////
 
-      const updateRes = await axios.patch(
+      const updateRes =
+        await axios.patch(
 
-  `https://api.razorpay.com/v2/accounts/${accountId}/products/route`,
+          `${RAZORPAY_V2}/accounts/${accountId}/products/route`,
 
-  {
+          {
 
-    settlement_bank_account: {
+            settlement_bank_account: {
 
-      account_number:
-        bankAccount,
+              account_number:
+                bankAccount,
 
-      ifsc:
-        ifsc,
+              ifsc:
+                ifsc,
 
-      beneficiary_name:
-        beneficiaryName
+              beneficiary_name:
+                beneficiaryName
 
-    }
+            }
 
-  },
+          },
 
-  {
-    auth: AUTH
-  }
+          {
+            auth: AUTH
+          }
 
-);
+        );
 
       //////////////////////////////////////////////////////
       // SUCCESS
@@ -337,12 +427,19 @@ app.post(
     } catch (err) {
 
       console.log(
+
         "BANK UPDATE ERROR =>",
+
         JSON.stringify(
-          err.response?.data || err.message,
+
+          err.response?.data ||
+          err.message,
+
           null,
           2
+
         )
+
       );
 
       res.status(500).json({
@@ -350,13 +447,15 @@ app.post(
         success: false,
 
         error:
-          err.response?.data || err.message
+          err.response?.data ||
+          err.message
 
       });
 
     }
 
   }
+
 );
 
 //////////////////////////////////////////////////////
@@ -364,12 +463,15 @@ app.post(
 //////////////////////////////////////////////////////
 
 app.post(
+
   "/create-mandate-link",
+
   async (req, res) => {
 
     try {
 
       const {
+
         name,
         mobile,
         amount,
@@ -377,6 +479,7 @@ app.post(
         frequency,
         dealer_name,
         dealerAccountId
+
       } = req.body;
 
       //////////////////////////////////////////////////////
@@ -384,43 +487,62 @@ app.post(
       //////////////////////////////////////////////////////
 
       if (
+
         !name ||
         !mobile ||
         !amount ||
         !frequency
+
       ) {
 
         return res.status(400).json({
+
           success: false,
-          error: "Missing fields"
+
+          error:
+            "Missing fields"
+
         });
 
       }
 
       //////////////////////////////////////////////////////
-      // PLAN PERIOD
+      // PERIOD
       //////////////////////////////////////////////////////
 
-      let period = "monthly";
+      let period =
+        "monthly";
 
       switch (
         frequency.toLowerCase()
       ) {
 
         case "daily":
-          period = "weekly";
+
+          period =
+            "weekly";
+
           break;
 
         case "weekly":
-          period = "weekly";
+
+          period =
+            "weekly";
+
           break;
 
         case "monthly":
-          period = "monthly";
+
+          period =
+            "monthly";
+
           break;
 
         case "yearly":
-          period = "yearly";
+
+          period =
+            "yearly";
+
           break;
 
       }
@@ -429,70 +551,76 @@ app.post(
       // CREATE PLAN
       //////////////////////////////////////////////////////
 
-      const planRes = await axios.post(
+      const planRes =
+        await axios.post(
 
-        `${RAZORPAY_BASE}/plans`,
+          `${RAZORPAY_V1}/plans`,
 
-        {
+          {
 
-          period: period,
+            period:
+              period,
 
-          interval: 1,
+            interval:
+              1,
 
-          item: {
+            item: {
 
-            name:
-              "Defendzo EMI",
+              name:
+                "Defendzo EMI",
 
-            amount:
-              parseInt(amount) * 100,
+              amount:
+                parseInt(amount) * 100,
 
-            currency:
-              "INR"
+              currency:
+                "INR"
 
+            }
+
+          },
+
+          {
+            auth: AUTH
           }
 
-        },
-
-        {
-          auth: AUTH
-        }
-
-      );
+        );
 
       //////////////////////////////////////////////////////
       // CREATE SUBSCRIPTION
       //////////////////////////////////////////////////////
 
-      const subRes = await axios.post(
+      const subRes =
+        await axios.post(
 
-        `${RAZORPAY_BASE}/subscriptions`,
+          `${RAZORPAY_V1}/subscriptions`,
 
-        {
+          {
 
-          plan_id:
-            planRes.data.id,
+            plan_id:
+              planRes.data.id,
 
-          total_count:
-            parseInt(tenure || 12),
+            total_count:
+              parseInt(
+                tenure || 12
+              ),
 
-          customer_notify:
-            1,
+            customer_notify:
+              1,
 
-          notes: {
+            notes: {
 
-            dealerAccountId:
-              dealerAccountId || ""
+              dealerAccountId:
+                dealerAccountId || ""
 
+            }
+
+          },
+
+          {
+            auth: AUTH
           }
 
-        },
-
-        {
-          auth: AUTH
-        }
-
-      );
+        );
 
       //////////////////////////////////////////////////////
       // LINK
@@ -534,12 +662,19 @@ app.post(
     } catch (err) {
 
       console.log(
+
         "MANDATE ERROR =>",
+
         JSON.stringify(
-          err.response?.data || err.message,
+
+          err.response?.data ||
+          err.message,
+
           null,
           2
+
         )
+
       );
 
       res.status(500).json({
@@ -547,13 +682,15 @@ app.post(
         success: false,
 
         error:
-          err.response?.data || err.message
+          err.response?.data ||
+          err.message
 
       });
 
     }
 
   }
+
 );
 
 //////////////////////////////////////////////////////
@@ -561,17 +698,23 @@ app.post(
 //////////////////////////////////////////////////////
 
 app.post(
+
   "/webhook",
+
   (req, res) => {
 
     console.log(
+
       "EVENT =>",
+
       req.body.event
+
     );
 
     res.send("ok");
 
   }
+
 );
 
 //////////////////////////////////////////////////////
