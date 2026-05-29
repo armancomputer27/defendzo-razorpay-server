@@ -13,12 +13,16 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-const RZP_KEY_ID = process.env.RZP_KEY_ID;
-const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
+const RZP_KEY_ID =
+  process.env.RZP_KEY_ID;
+
+const RZP_KEY_SECRET =
+  process.env.RZP_KEY_SECRET;
 
 if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
 
   console.log("❌ ENV Missing");
+
   process.exit(1);
 
 }
@@ -30,12 +34,13 @@ if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
 const AUTH = {
 
   username: RZP_KEY_ID,
+
   password: RZP_KEY_SECRET
 
 };
 
 //////////////////////////////////////////////////////
-// BASE
+// BASE URL
 //////////////////////////////////////////////////////
 
 const RAZORPAY_V1 =
@@ -94,6 +99,7 @@ app.post(
         return res.status(400).json({
 
           success: false,
+
           error: "Missing fields"
 
         });
@@ -113,7 +119,7 @@ app.post(
         .trim();
 
       //////////////////////////////////////////////////////
-      // CREATE ACCOUNT
+      // CREATE ACCOUNT PAYLOAD
       //////////////////////////////////////////////////////
 
       const payload = {
@@ -179,7 +185,11 @@ app.post(
         JSON.stringify(payload, null, 2)
       );
 
-      const response = await axios.post(
+      //////////////////////////////////////////////////////
+      // CREATE ACCOUNT
+      //////////////////////////////////////////////////////
+
+      const accountRes = await axios.post(
 
         `${RAZORPAY_V2}/accounts`,
 
@@ -192,35 +202,58 @@ app.post(
       );
 
       //////////////////////////////////////////////////////
-      // ENABLE ROUTE PRODUCT
+      // ACCOUNT ID
+      //////////////////////////////////////////////////////
+
+      const accountId =
+        accountRes.data.id;
+
+      console.log(
+        "ACCOUNT CREATED =>",
+        accountId
+      );
+
+      //////////////////////////////////////////////////////
+      // ENABLE ROUTE
       //////////////////////////////////////////////////////
 
       try {
 
-        await axios.post(
+        const routeRes =
+          await axios.post(
 
-          `${RAZORPAY_V2}/accounts/${response.data.id}/products`,
+            `${RAZORPAY_V2}/accounts/${accountId}/products`,
 
-          {
+            {
 
-            product_name: "route",
+              product_name:
+                "route",
 
-            tnc_accepted: true
+              tnc_accepted:
+                true
 
-          },
+            },
 
-          {
-            auth: AUTH
-          }
+            {
+              auth: AUTH
+            }
 
+          );
+
+        console.log(
+          "ROUTE ENABLED =>",
+          JSON.stringify(routeRes.data, null, 2)
         );
-
-        console.log("✅ ROUTE ENABLED");
 
       } catch (e) {
 
         console.log(
-          "ROUTE ALREADY ENABLED"
+          "ROUTE ENABLE ERROR =>",
+          JSON.stringify(
+            e.response?.data || e.message,
+            null,
+            2
+          )
         );
 
       }
@@ -234,25 +267,22 @@ app.post(
         success: true,
 
         accountId:
-          response.data.id,
+          accountId,
 
         data:
-          response.data
+          accountRes.data
 
       });
 
     } catch (err) {
 
       console.log(
-
         "CREATE ACCOUNT ERROR =>",
-
         JSON.stringify(
           err.response?.data || err.message,
           null,
           2
         )
-
       );
 
       res.status(500).json({
@@ -270,7 +300,7 @@ app.post(
 );
 
 //////////////////////////////////////////////////////
-// UPDATE BANK
+// UPDATE DEALER BANK
 //////////////////////////////////////////////////////
 
 app.post(
@@ -302,6 +332,7 @@ app.post(
         return res.status(400).json({
 
           success: false,
+
           error: "Missing fields"
 
         });
@@ -317,84 +348,43 @@ app.post(
       );
 
       //////////////////////////////////////////////////////
-      // FETCH PRODUCTS
-      //////////////////////////////////////////////////////
-
-      const productRes = await axios.get(
-
-        `${RAZORPAY_V2}/accounts/${accountId}/products`,
-
-        {
-          auth: AUTH
-        }
-
-      );
-
-      console.log(
-        "PRODUCTS =>",
-        JSON.stringify(productRes.data, null, 2)
-      );
-
-      //////////////////////////////////////////////////////
-      // GET PRODUCT ID
-      //////////////////////////////////////////////////////
-
-      const routeProduct =
-        productRes.data.items.find(
-
-          p => p.product_name === "route"
-
-        );
-
-      if (!routeProduct) {
-
-        return res.status(400).json({
-
-          success: false,
-          error: "Route Product Missing"
-
-        });
-
-      }
-
-      const productId =
-        routeProduct.id;
-
-      console.log(
-        "ROUTE PRODUCT ID =>",
-        productId
-      );
-
-      //////////////////////////////////////////////////////
       // UPDATE BANK
       //////////////////////////////////////////////////////
 
-      const updateRes = await axios.patch(
+      const updatePayload = {
 
-        `${RAZORPAY_V2}/accounts/${accountId}/products/${productId}`,
+        settlements: {
 
-        {
+          account_number:
+            bankAccount,
 
-          settlements: {
+          ifsc_code:
+            ifsc,
 
-            account_number:
-              bankAccount,
+          beneficiary_name:
+            beneficiaryName
 
-            ifsc_code:
-              ifsc,
-
-            beneficiary_name:
-              beneficiaryName
-
-          }
-
-        },
-
-        {
-          auth: AUTH
         }
 
+      };
+
+      console.log(
+        "BANK UPDATE PAYLOAD =>",
+        JSON.stringify(updatePayload, null, 2)
       );
+
+      const updateRes =
+        await axios.patch(
+
+          `${RAZORPAY_V2}/accounts/${accountId}/products/route`,
+
+          updatePayload,
+
+          {
+            auth: AUTH
+          }
+
+        );
 
       //////////////////////////////////////////////////////
       // SUCCESS
@@ -405,7 +395,7 @@ app.post(
         success: true,
 
         message:
-          "Bank Updated",
+          "Bank Updated Successfully",
 
         data:
           updateRes.data
@@ -415,15 +405,12 @@ app.post(
     } catch (err) {
 
       console.log(
-
         "BANK UPDATE ERROR =>",
-
         JSON.stringify(
           err.response?.data || err.message,
           null,
           2
         )
-
       );
 
       res.status(500).json({
@@ -462,6 +449,10 @@ app.post(
 
       } = req.body;
 
+      //////////////////////////////////////////////////////
+      // VALIDATION
+      //////////////////////////////////////////////////////
+
       if (
         !name ||
         !mobile ||
@@ -472,6 +463,7 @@ app.post(
         return res.status(400).json({
 
           success: false,
+
           error: "Missing fields"
 
         });
@@ -479,7 +471,7 @@ app.post(
       }
 
       //////////////////////////////////////////////////////
-      // PERIOD
+      // PLAN PERIOD
       //////////////////////////////////////////////////////
 
       let period = "monthly";
@@ -502,70 +494,74 @@ app.post(
       // CREATE PLAN
       //////////////////////////////////////////////////////
 
-      const planRes = await axios.post(
+      const planRes =
+        await axios.post(
 
-        `${RAZORPAY_V1}/plans`,
+          `${RAZORPAY_V1}/plans`,
 
-        {
+          {
 
-          period: period,
+            period:
+              period,
 
-          interval: 1,
+            interval:
+              1,
 
-          item: {
+            item: {
 
-            name:
-              "Defendzo EMI",
+              name:
+                "Defendzo EMI",
 
-            amount:
-              parseInt(amount) * 100,
+              amount:
+                parseInt(amount) * 100,
 
-            currency:
-              "INR"
+              currency:
+                "INR"
 
+            }
+
+          },
+
+          {
+            auth: AUTH
           }
 
-        },
-
-        {
-          auth: AUTH
-        }
-
-      );
+        );
 
       //////////////////////////////////////////////////////
       // CREATE SUBSCRIPTION
       //////////////////////////////////////////////////////
 
-      const subRes = await axios.post(
+      const subRes =
+        await axios.post(
 
-        `${RAZORPAY_V1}/subscriptions`,
+          `${RAZORPAY_V1}/subscriptions`,
 
-        {
+          {
 
-          plan_id:
-            planRes.data.id,
+            plan_id:
+              planRes.data.id,
 
-          total_count:
-            parseInt(tenure || 12),
+            total_count:
+              parseInt(tenure || 12),
 
-          customer_notify:
-            1,
+            customer_notify:
+              1,
 
-          notes: {
+            notes: {
 
-            dealerAccountId:
-              dealerAccountId || ""
+              dealerAccountId:
+                dealerAccountId || ""
 
+            }
+
+          },
+
+          {
+            auth: AUTH
           }
 
-        },
-
-        {
-          auth: AUTH
-        }
-
-      );
+        );
 
       //////////////////////////////////////////////////////
       // LINK
@@ -589,6 +585,10 @@ app.post(
 
         `&amount=${amount}`;
 
+      //////////////////////////////////////////////////////
+      // SUCCESS
+      //////////////////////////////////////////////////////
+
       res.json({
 
         success: true,
@@ -603,15 +603,12 @@ app.post(
     } catch (err) {
 
       console.log(
-
         "MANDATE ERROR =>",
-
         JSON.stringify(
           err.response?.data || err.message,
           null,
           2
         )
-
       );
 
       res.status(500).json({
