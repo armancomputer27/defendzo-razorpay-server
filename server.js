@@ -293,30 +293,30 @@ app.post(
 
       const updateRes = await axios.patch(
 
-        `https://api.razorpay.com/v2/accounts/${accountId}/products/route`,
+  `https://api.razorpay.com/v2/accounts/${accountId}/products/route`,
 
-        {
+  {
 
-          settlements: {
+    settlement_bank_account: {
 
-            account_number:
-              bankAccount,
+      account_number:
+        bankAccount,
 
-            ifsc_code:
-              ifsc,
+      ifsc:
+        ifsc,
 
-            beneficiary_name:
-              beneficiaryName
+      beneficiary_name:
+        beneficiaryName
 
-          }
+    }
 
-        },
+  },
 
-        {
-          auth: AUTH
-        }
+  {
+    auth: AUTH
+  }
 
-      );
+);
 
       //////////////////////////////////////////////////////
       // SUCCESS
