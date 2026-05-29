@@ -11,22 +11,14 @@ app.use(express.json());
 // ENV
 //////////////////////////////////////////////////////
 
-const PORT =
-  process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
-const RZP_KEY_ID =
-  process.env.RZP_KEY_ID;
+const RZP_KEY_ID = process.env.RZP_KEY_ID;
+const RZP_KEY_SECRET = process.env.RZP_KEY_SECRET;
 
-const RZP_KEY_SECRET =
-  process.env.RZP_KEY_SECRET;
-
-if (
-  !RZP_KEY_ID ||
-  !RZP_KEY_SECRET
-) {
+if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
 
   console.log("❌ ENV Missing");
-
   process.exit(1);
 
 }
@@ -37,11 +29,8 @@ if (
 
 const AUTH = {
 
-  username:
-    RZP_KEY_ID,
-
-  password:
-    RZP_KEY_SECRET
+  username: RZP_KEY_ID,
+  password: RZP_KEY_SECRET
 
 };
 
@@ -61,9 +50,7 @@ const RAZORPAY_V2 =
 
 app.get("/", (req, res) => {
 
-  res.send(
-    "✅ Defendzo Running"
-  );
+  res.send("✅ Defendzo Running");
 
 });
 
@@ -72,9 +59,7 @@ app.get("/", (req, res) => {
 //////////////////////////////////////////////////////
 
 app.post(
-
   "/create-dealer-account",
-
   async (req, res) => {
 
     try {
@@ -97,7 +82,6 @@ app.post(
       //////////////////////////////////////////////////////
 
       if (
-
         !dealerUid ||
         !name ||
         !email ||
@@ -105,33 +89,26 @@ app.post(
         !city ||
         !state ||
         !pincode
-
       ) {
 
         return res.status(400).json({
 
           success: false,
-
-          error:
-            "Missing fields"
+          error: "Missing fields"
 
         });
 
       }
 
       //////////////////////////////////////////////////////
-      // CLEAN
+      // CLEAN DATA
       //////////////////////////////////////////////////////
 
       const cleanName = name
-
         .replace(/[^a-zA-Z ]/g, "")
         .trim();
 
-      const cleanShop =
-
-        (shop_name || "Shop")
-
+      const cleanShop = (shop_name || "Shop")
         .replace(/[^a-zA-Z0-9 ]/g, "")
         .trim();
 
@@ -148,8 +125,7 @@ app.post(
         type: "route",
 
         reference_id:
-          (dealerUid || "dealer")
-          .substring(0, 20),
+          dealerUid.substring(0, 20),
 
         legal_business_name:
           cleanShop || cleanName,
@@ -200,19 +176,38 @@ app.post(
 
       console.log(
         "CREATE ACCOUNT PAYLOAD =>",
-        JSON.stringify(
-          payload,
-          null,
-          2
-        )
+        JSON.stringify(payload, null, 2)
       );
 
-      const accountRes =
+      const response = await axios.post(
+
+        `${RAZORPAY_V2}/accounts`,
+
+        payload,
+
+        {
+          auth: AUTH
+        }
+
+      );
+
+      //////////////////////////////////////////////////////
+      // ENABLE ROUTE PRODUCT
+      //////////////////////////////////////////////////////
+
+      try {
+
         await axios.post(
 
-          `${RAZORPAY_V2}/accounts`,
+          `${RAZORPAY_V2}/accounts/${response.data.id}/products`,
 
-          payload,
+          {
+
+            product_name: "route",
+
+            tnc_accepted: true
+
+          },
 
           {
             auth: AUTH
@@ -220,55 +215,12 @@ app.post(
 
         );
 
-      //////////////////////////////////////////////////////
-      // ACCOUNT ID
-      //////////////////////////////////////////////////////
-
-      const accountId =
-        accountRes.data.id;
-
-      //////////////////////////////////////////////////////
-      // ENABLE ROUTE
-      //////////////////////////////////////////////////////
-
-      try {
-
-        const routeRes =
-          await axios.post(
-
-            `${RAZORPAY_V2}/accounts/${accountId}/products`,
-
-            {
-
-              product_name:
-                "route",
-
-              tnc_accepted:
-                true
-
-            },
-
-            {
-              auth: AUTH
-            }
-
-          );
-
-        console.log(
-          "ROUTE ENABLED =>",
-          routeRes.data.id
-        );
+        console.log("✅ ROUTE ENABLED");
 
       } catch (e) {
 
         console.log(
-          "ROUTE ENABLE ERROR =>",
-          JSON.stringify(
-            e.response?.data ||
-            e.message,
-            null,
-            2
-          )
+          "ROUTE ALREADY ENABLED"
         );
 
       }
@@ -282,10 +234,10 @@ app.post(
         success: true,
 
         accountId:
-          accountId,
+          response.data.id,
 
         data:
-          accountRes.data
+          response.data
 
       });
 
@@ -296,13 +248,9 @@ app.post(
         "CREATE ACCOUNT ERROR =>",
 
         JSON.stringify(
-
-          err.response?.data ||
-          err.message,
-
+          err.response?.data || err.message,
           null,
           2
-
         )
 
       );
@@ -312,25 +260,21 @@ app.post(
         success: false,
 
         error:
-          err.response?.data ||
-          err.message
+          err.response?.data || err.message
 
       });
 
     }
 
   }
-
 );
 
 //////////////////////////////////////////////////////
-// UPDATE DEALER BANK
+// UPDATE BANK
 //////////////////////////////////////////////////////
 
 app.post(
-
   "/update-dealer-bank",
-
   async (req, res) => {
 
     try {
@@ -349,20 +293,16 @@ app.post(
       //////////////////////////////////////////////////////
 
       if (
-
         !accountId ||
         !bankAccount ||
         !ifsc ||
         !beneficiaryName
-
       ) {
 
         return res.status(400).json({
 
           success: false,
-
-          error:
-            "Missing fields"
+          error: "Missing fields"
 
         });
 
@@ -377,36 +317,84 @@ app.post(
       );
 
       //////////////////////////////////////////////////////
-      // UPDATE ROUTE PRODUCT
+      // FETCH PRODUCTS
       //////////////////////////////////////////////////////
 
-      const updateRes =
-        await axios.patch(
+      const productRes = await axios.get(
 
-          `${RAZORPAY_V2}/accounts/${accountId}/products/route`,
+        `${RAZORPAY_V2}/accounts/${accountId}/products`,
 
-          {
+        {
+          auth: AUTH
+        }
 
-            settlement_bank_account: {
+      );
 
-              account_number:
-                bankAccount,
+      console.log(
+        "PRODUCTS =>",
+        JSON.stringify(productRes.data, null, 2)
+      );
 
-              ifsc:
-                ifsc,
+      //////////////////////////////////////////////////////
+      // GET PRODUCT ID
+      //////////////////////////////////////////////////////
 
-              beneficiary_name:
-                beneficiaryName
+      const routeProduct =
+        productRes.data.items.find(
 
-            }
-
-          },
-
-          {
-            auth: AUTH
-          }
+          p => p.product_name === "route"
 
         );
+
+      if (!routeProduct) {
+
+        return res.status(400).json({
+
+          success: false,
+          error: "Route Product Missing"
+
+        });
+
+      }
+
+      const productId =
+        routeProduct.id;
+
+      console.log(
+        "ROUTE PRODUCT ID =>",
+        productId
+      );
+
+      //////////////////////////////////////////////////////
+      // UPDATE BANK
+      //////////////////////////////////////////////////////
+
+      const updateRes = await axios.patch(
+
+        `${RAZORPAY_V2}/accounts/${accountId}/products/${productId}`,
+
+        {
+
+          settlements: {
+
+            account_number:
+              bankAccount,
+
+            ifsc_code:
+              ifsc,
+
+            beneficiary_name:
+              beneficiaryName
+
+          }
+
+        },
+
+        {
+          auth: AUTH
+        }
+
+      );
 
       //////////////////////////////////////////////////////
       // SUCCESS
@@ -431,13 +419,9 @@ app.post(
         "BANK UPDATE ERROR =>",
 
         JSON.stringify(
-
-          err.response?.data ||
-          err.message,
-
+          err.response?.data || err.message,
           null,
           2
-
         )
 
       );
@@ -447,15 +431,13 @@ app.post(
         success: false,
 
         error:
-          err.response?.data ||
-          err.message
+          err.response?.data || err.message
 
       });
 
     }
 
   }
-
 );
 
 //////////////////////////////////////////////////////
@@ -463,9 +445,7 @@ app.post(
 //////////////////////////////////////////////////////
 
 app.post(
-
   "/create-mandate-link",
-
   async (req, res) => {
 
     try {
@@ -482,25 +462,17 @@ app.post(
 
       } = req.body;
 
-      //////////////////////////////////////////////////////
-      // VALIDATION
-      //////////////////////////////////////////////////////
-
       if (
-
         !name ||
         !mobile ||
         !amount ||
         !frequency
-
       ) {
 
         return res.status(400).json({
 
           success: false,
-
-          error:
-            "Missing fields"
+          error: "Missing fields"
 
         });
 
@@ -510,39 +482,18 @@ app.post(
       // PERIOD
       //////////////////////////////////////////////////////
 
-      let period =
-        "monthly";
+      let period = "monthly";
 
       switch (
         frequency.toLowerCase()
       ) {
 
-        case "daily":
-
-          period =
-            "weekly";
-
-          break;
-
         case "weekly":
-
-          period =
-            "weekly";
-
-          break;
-
-        case "monthly":
-
-          period =
-            "monthly";
-
+          period = "weekly";
           break;
 
         case "yearly":
-
-          period =
-            "yearly";
-
+          period = "yearly";
           break;
 
       }
@@ -551,76 +502,70 @@ app.post(
       // CREATE PLAN
       //////////////////////////////////////////////////////
 
-      const planRes =
-        await axios.post(
+      const planRes = await axios.post(
 
-          `${RAZORPAY_V1}/plans`,
+        `${RAZORPAY_V1}/plans`,
 
-          {
+        {
 
-            period:
-              period,
+          period: period,
 
-            interval:
-              1,
+          interval: 1,
 
-            item: {
+          item: {
 
-              name:
-                "Defendzo EMI",
+            name:
+              "Defendzo EMI",
 
-              amount:
-                parseInt(amount) * 100,
+            amount:
+              parseInt(amount) * 100,
 
-              currency:
-                "INR"
+            currency:
+              "INR"
 
-            }
-
-          },
-
-          {
-            auth: AUTH
           }
 
-        );
+        },
+
+        {
+          auth: AUTH
+        }
+
+      );
 
       //////////////////////////////////////////////////////
       // CREATE SUBSCRIPTION
       //////////////////////////////////////////////////////
 
-      const subRes =
-        await axios.post(
+      const subRes = await axios.post(
 
-          `${RAZORPAY_V1}/subscriptions`,
+        `${RAZORPAY_V1}/subscriptions`,
 
-          {
+        {
 
-            plan_id:
-              planRes.data.id,
+          plan_id:
+            planRes.data.id,
 
-            total_count:
-              parseInt(
-                tenure || 12
-              ),
+          total_count:
+            parseInt(tenure || 12),
 
-            customer_notify:
-              1,
+          customer_notify:
+            1,
 
-            notes: {
+          notes: {
 
-              dealerAccountId:
-                dealerAccountId || ""
+            dealerAccountId:
+              dealerAccountId || ""
 
-            }
-
-          },
-
-          {
-            auth: AUTH
           }
 
-        );
+        },
+
+        {
+          auth: AUTH
+        }
+
+      );
 
       //////////////////////////////////////////////////////
       // LINK
@@ -644,10 +589,6 @@ app.post(
 
         `&amount=${amount}`;
 
-      //////////////////////////////////////////////////////
-      // RESPONSE
-      //////////////////////////////////////////////////////
-
       res.json({
 
         success: true,
@@ -666,13 +607,9 @@ app.post(
         "MANDATE ERROR =>",
 
         JSON.stringify(
-
-          err.response?.data ||
-          err.message,
-
+          err.response?.data || err.message,
           null,
           2
-
         )
 
       );
@@ -682,15 +619,13 @@ app.post(
         success: false,
 
         error:
-          err.response?.data ||
-          err.message
+          err.response?.data || err.message
 
       });
 
     }
 
   }
-
 );
 
 //////////////////////////////////////////////////////
@@ -698,23 +633,17 @@ app.post(
 //////////////////////////////////////////////////////
 
 app.post(
-
   "/webhook",
-
   (req, res) => {
 
     console.log(
-
       "EVENT =>",
-
       req.body.event
-
     );
 
     res.send("ok");
 
   }
-
 );
 
 //////////////////////////////////////////////////////
