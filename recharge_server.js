@@ -157,7 +157,7 @@ app.get("/api/cyrus/status-check", async (req, res) => {
 app.all("/api/cyrus/callback", (req, res) => {
   try {
     // Cyrus post ya get dono bhej sakta hai, isliye dono handle kiye hain
-    val incomingData = Object.keys(req.body).length > 0 ? req.body : req.query;
+    const incomingData = Object.keys(req.body).length > 0 ? req.body : req.query;
     
     console.log("\n📬 ======= INCOMING CYRUS CALLBACK WEBHOOK =======");
     console.log("PAYLOAD =>", JSON.stringify(incomingData, null, 2));
