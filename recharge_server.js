@@ -4,7 +4,6 @@ const axios = require("axios");
 
 const app = express();
 app.use(express.json());
-// Form data handle karne ke liye (Cyrus callbacks ke liye helpful ho sakta hai)
 app.use(express.urlencoded({ extended: true }));
 
 // Render & Environment Compatible Port Setup
@@ -23,6 +22,27 @@ const STATUS_BASE_URL = "https://cyrusrecharge.in/api/rechargestatus.aspx";
 // Global Root Health Check for Render Instance
 app.get("/", (req, res) => {
   res.send("⚡ Defendzo Cyrus Master Recharge Engine is Live and Fully Operational!");
+});
+
+//////////////////////////////////////////////////////
+// 🔍 SECURE OPERATOR & CIRCLE FINDER FOR ANDROID APP
+//////////////////////////////////////////////////////
+app.get("/api/cyrus/find-operator", async (req, res) => {
+  try {
+    const { mobile } = req.query;
+    if (!mobile) {
+      return res.status(400).json({ success: false, error: "Mobile number is required" });
+    }
+
+    const liveUrl = `https://cyrusrecharge.in/api/operatorfind.aspx?api_key=${CYRUS_PIN}&mobile=${mobile}`;
+    const response = await axios.get(liveUrl);
+    
+    // Cyrus direct string data bhejta hai (e.g., "JIO, Madhya Pradesh")
+    res.send(response.data);
+  } catch (err) {
+    console.error("❌ SECURE OPERATOR FIND ERROR =>", err.message);
+    res.status(500).send("Invalid,Error");
+  }
 });
 
 //////////////////////////////////////////////////////
@@ -78,7 +98,7 @@ app.post("/api/cyrus/recharge", async (req, res) => {
       return res.status(400).json({ success: false, error: "Missing mobile, amount, operatorCode, or circleCode" });
     }
 
-    // Creating unique 10-12 alpha-numeric ID using timestamp
+    // Unique transaction ID generated via timestamp
     const systemTxnId = `TXN${Date.now().toString().slice(-9)}`;
 
     const liveUrl = `${RECHARGE_BASE_URL}?memberid=${CYRUS_MEMBER_ID}&pin=${CYRUS_PIN}&number=${mobile}&operator=${operatorCode}&circle=${circleCode}&amount=${amount}&usertx=${systemTxnId}&format=json&RechargeMode=1`;
@@ -100,11 +120,11 @@ app.post("/api/cyrus/recharge", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 5️⃣ DISPUTE REQUEST (Raise Issue for Pending/Failed txns)
+// 5️⃣ DISPUTE REQUEST
 //////////////////////////////////////////////////////
 app.post("/api/cyrus/raise-dispute", async (req, res) => {
   try {
-    const { transId, reason } = req.body; // Cyrus Transaction ID aur reason (e.g., "Not Done")
+    const { transId, reason } = req.body;
 
     if (!transId || !reason) {
       return res.status(400).json({ success: false, error: "Missing transId or reason" });
@@ -127,11 +147,11 @@ app.post("/api/cyrus/raise-dispute", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 6️⃣ STATUS CHECK (Fetch specific transaction real-time status)
+// 6️⃣ STATUS CHECK
 //////////////////////////////////////////////////////
 app.get("/api/cyrus/status-check", async (req, res) => {
   try {
-    const { transId } = req.query; // Expecting transId via Query Param (?transId=12345)
+    const { transId } = req.query;
 
     if (!transId) {
       return res.status(400).json({ success: false, error: "Missing transId query parameter" });
@@ -152,23 +172,16 @@ app.get("/api/cyrus/status-check", async (req, res) => {
 //////////////////////////////////////////////////////
 // 7️⃣ CALLBACK WEBHOOK RECEIVER
 //////////////////////////////////////////////////////
-// Note: Is URL ko aapko Cyrus API Panel > Setting > Callback url me save karna hoga
-// URL format: https://aapka-render-url.onrender.com/api/cyrus/callback
 app.all("/api/cyrus/callback", (req, res) => {
   try {
-    // Cyrus post ya get dono bhej sakta hai, isliye dono handle kiye hain
+    // Fixed: 'val' changed to 'const' to resolve Node.js compilation crash
     const incomingData = Object.keys(req.body).length > 0 ? req.body : req.query;
     
     console.log("\n📬 ======= INCOMING CYRUS CALLBACK WEBHOOK =======");
     console.log("PAYLOAD =>", JSON.stringify(incomingData, null, 2));
     console.log("================================================\n");
 
-    // TODO: Yahan par aap Firestore update karne ka logic likh sakte hain:
-    // Jaise ki txn status check karke user ke wallet me balance refund karna agar fail hua ho.
-
-    // Cyrus server ko batayein ki humein data mil gaya hai (HTTP 200 OK Response)
     res.status(200).send("SUCCESS");
-
   } catch (err) {
     console.error("❌ CALLBACK ENGINE ERROR =>", err.message);
     res.status(500).send("ERROR");
