@@ -5,75 +5,83 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-// Render and Local Environment Compatible Port
+// Dynamic Port Binding for Render Cloud Environment
 const PORT = process.env.PORT || process.env.RECHARGE_PORT || 3001;
 
-// Credentials from Environment or Fallback Defaults
+// Secured Credentials with Fallback Defaults
 const CYRUS_MEMBER_ID = process.env.CYRUS_MEMBER_ID || "AP263748";
-const CYRUS_PIN = process.env.CYRUS_PIN || "4C4E6480F9"; 
+const CYRUS_PIN = process.env.CYRUS_PIN || "4C4E6480F9";
 
-// 🔥 Exact Base URLs from your shared documentation
-const RECHARGE_URL = "https://cyrusrecharge.in/services_cyapi/recharge_cyapi.aspx";
-const UTILITY_URL = "https://Cyrusrecharge.in/api/GetOperator.aspx";
+// Absolute URLs Extracted from Postman Documentation
+const RECHARGE_BASE_URL = "https://cyrusrecharge.in/services_cyapi/recharge_cyapi.aspx";
+const UTILITY_BASE_URL = "https://cyrusrecharge.in/api/GetOperator.aspx";
 
-// Health Check Endpoint for Render
+// Health Check Root Route for Render Service Instance Validation
 app.get("/", (req, res) => {
-  res.send("⚡ Defendzo Cyrus Production Server is Live and Ready!");
+  res.send("⚡ Defendzo Cyrus Production Microservice is Live and Running!");
 });
 
 //////////////////////////////////////////////////////
-// 🚀 ENDPOINT 1: LIVE RECHARGE EXECUTION (As per Doc)
+// 🚀 ENDPOINT 1: PREPAID RECHARGE TRANSACTION RUNNER
 //////////////////////////////////////////////////////
 app.post("/api/cyrus/recharge", async (req, res) => {
   try {
-    // Android App se dynamic parameters le rahe hain
-    const { mobile, amount, opCode, circleCode } = req.body;
+    const { mobile, amount, operatorCode, circleCode } = req.body;
 
-    if (!mobile || !amount || !opCode) {
-      return res.status(400).json({ success: false, error: "Missing required parameters (mobile, amount, or opCode)" });
+    // Strict Request Validation
+    if (!mobile || !amount || !operatorCode || !circleCode) {
+      return res.status(400).json({
+        success: false,
+        error: "Bad Request. Required keys missing: mobile, amount, operatorCode, circleCode"
+      });
     }
 
-    // Creating a clean unique 10-12 alphanumeric txn ID using timestamp
-    const userTxnId = `TXN${Date.now().toString().slice(-9)}`;
+    // System Generated Unique 10-12 Alphanumeric Transaction ID as per Doc specifications
+    const systemGeneratedTxn = `TXN${Date.now().toString().slice(-9)}`;
 
-    // 🔥 Building exact Query string as per your shared text documentation
-    const liveUrl = `${RECHARGE_URL}?memberid=${CYRUS_MEMBER_ID}&pin=${CYRUS_PIN}&number=${mobile}&operator=${opCode}&circle=${circleCode || "19"}&amount=${amount}&usertx=${userTxnId}&format=json&RechargeMode=1`;
+    // Constructing Exact Query String structure requested by Cyrus Framework
+    const liveUrl = `${RECHARGE_BASE_URL}?memberid=${CYRUS_MEMBER_ID}&pin=${CYRUS_PIN}&number=${mobile}&operator=${operatorCode}&circle=${circleCode}&amount=${amount}&usertx=${systemGeneratedTxn}&format=json&RechargeMode=1`;
 
-    console.log(`\n📡 FIRING RECHARGE REQUEST`);
-    console.log(`📱 Number: ${mobile} | Code: ${opCode} | Amt: ₹${amount} | TxID: ${userTxnId}`);
+    console.log(`\n📡 OUTBOUND TRANSMISSION TRACE`);
+    console.log(`🔗 Target URL: ${liveUrl}`);
+
+    const cyrusResponse = await axios.get(liveUrl);
     
-    // Hitting Cyrus Server
-    const cyrusRes = await axios.get(liveUrl);
-    
-    // Direct log for debugging on Render Dashboard
-    console.log("🎯 CYRUS RESPONSE =>", JSON.stringify(cyrusRes.data, null, 2));
+    // Immediate log window on Render Dashboard console terminal
+    console.log("🎯 CYRUS PARSED RESPONSE SCHEMA =>", JSON.stringify(cyrusResponse.data, null, 2));
 
-    // Response send to Android Application
-    res.json({
+    // Send structure cleanly back to mobile application client environment
+    return res.json({
       success: true,
-      cyrus_raw: cyrusRes.data
+      system_txn_id: systemGeneratedTxn,
+      cyrus_raw: cyrusResponse.data
     });
 
   } catch (err) {
-    console.error("❌ BACKEND EXCEPTION =>", err.message);
-    res.status(500).json({ success: false, error: "Internal Server Crash", details: err.message });
+    console.error("❌ CRITICAL RECHARGE CRASH EXCEPTION =>", err.message);
+    return res.status(500).json({
+      success: false,
+      error: "Backend Internal Server Error Exception",
+      details: err.message
+    });
   }
 });
 
 //////////////////////////////////////////////////////
-// 🔍 ENDPOINT 2: GET CIRCLE LIST
+// 🔍 ENDPOINT 2: MASTER CIRCLES DATA SYNC ENDPOINT
 //////////////////////////////////////////////////////
 app.get("/api/cyrus/get-circles", async (req, res) => {
   try {
-    const circleUrl = `${UTILITY_URL}?memberid=${CYRUS_MEMBER_ID}&pin=${CYRUS_PIN}&Method=getcircle`;
-    const cyrusRes = await axios.get(circleUrl);
-    res.json(cyrusRes.data);
+    const circleUrl = `${UTILITY_BASE_URL}?memberid=${CYRUS_MEMBER_ID}&pin=${CYRUS_PIN}&Method=getcircle`;
+    const response = await axios.get(circleUrl);
+    return res.json(response.data);
   } catch (err) {
-    console.error("❌ CIRCLE FETCH ERROR =>", err.message);
-    res.status(500).json({ success: false, error: err.message });
+    console.error("❌ MASTER CIRCLES ACCESS EXCEPTION =>", err.message);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
+// Activate Express HTTP Engine Listen Node
 app.listen(PORT, () => {
-  console.log(`🚀 Dedicated Recharge Server operational on port ${PORT}`);
+  console.log(`🚀 Cyrus Production Node Engine Activated Safely on Port ${PORT}`);
 });
