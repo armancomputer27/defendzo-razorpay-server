@@ -25,45 +25,49 @@ app.get("/", (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 🔍 SECURE OPERATOR & CIRCLE FINDER FOR ANDROID APP (FIXED & SECURE)
+// 🔍 SECURE OPERATOR & CIRCLE FINDER FOR ANDROID APP
 //////////////////////////////////////////////////////
 app.get("/api/cyrus/find-operator", async (req, res) => {
   try {
     const { mobile } = req.query;
     if (!mobile || mobile.length !== 10) {
-      return res.send("Airtel,Madhya Pradesh"); // Safe fallback for invalid numbers
+      return res.send("Airtel,Madhya Pradesh");
     }
 
-    // Cyrus API live URL hitting mechanism
+    // Live operator find endpoint hitting
     const liveUrl = `https://cyrusrecharge.in/api/operatorfind.aspx?api_key=${CYRUS_PIN}&mobile=${mobile}`;
     
-    // 5 seconds timeout setup taaki server hang na ho
     const response = await axios.get(liveUrl, { timeout: 5000 });
     
-    // Check if Cyrus sends a valid comma-separated string (e.g., "JIO,Madhya Pradesh")
     if (response.data && typeof response.data === 'string' && response.data.includes(',')) {
       res.send(response.data);
     } else {
-      // If Cyrus response format is unexpected or returns empty
-      console.log("⚠️ Cyrus Response format unexpected:", response.data);
-      res.send("Airtel,Madhya Pradesh"); // Smart Fallback
+      console.log("⚠️ Cyrus Finder Format Unexpected:", response.data);
+      res.send("Airtel,Madhya Pradesh"); // Safe Fallback UI freeze rokne ke liye
     }
   } catch (err) {
     console.error("❌ SECURE OPERATOR FIND ERROR =>", err.message);
-    // CRITICAL FIX: Sending 200 OK with default string instead of 500/404 
-    // taaki Android app freeze na ho aur user apna operator manual choose kar sake
     res.send("Airtel,Madhya Pradesh"); 
   }
 });
 
 //////////////////////////////////////////////////////
-// 1️⃣ GET CIRCLE LIST
+// 1️⃣ GET CIRCLE LIST (Updated with explicit query params)
 //////////////////////////////////////////////////////
 app.get("/api/cyrus/get-circles", async (req, res) => {
   try {
     const liveUrl = `${UTILITY_BASE_URL}?memberid=${CYRUS_MEMBER_ID}&pin=${CYRUS_PIN}&Method=getcircle`;
-    const response = await axios.get(liveUrl);
-    res.json(response.data);
+    console.log("📡 Fetching Circles from Cyrus...");
+    
+    const response = await axios.get(liveUrl, { timeout: 7000 });
+    
+    // Agar data direct string/HTML hai toh direct text bhejein, warna JSON
+    if (typeof response.data === "string") {
+      res.setHeader("Content-Type", "text/html");
+      res.send(response.data);
+    } else {
+      res.json(response.data);
+    }
   } catch (err) {
     console.error("❌ GET CIRCLE ERROR =>", err.message);
     res.status(500).json({ success: false, error: err.message });
@@ -71,13 +75,21 @@ app.get("/api/cyrus/get-circles", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////
-// 2️⃣ GET OPERATOR LIST
+// 2️⃣ GET OPERATOR LIST (Updated with explicit query params)
 //////////////////////////////////////////////////////
 app.get("/api/cyrus/get-operators", async (req, res) => {
   try {
     const liveUrl = `${UTILITY_BASE_URL}?memberid=${CYRUS_MEMBER_ID}&pin=${CYRUS_PIN}&Method=getoperator`;
-    const response = await axios.get(liveUrl);
-    res.json(response.data);
+    console.log("📡 Fetching Operators from Cyrus...");
+    
+    const response = await axios.get(liveUrl, { timeout: 7000 });
+    
+    if (typeof response.data === "string") {
+      res.setHeader("Content-Type", "text/html");
+      res.send(response.data);
+    } else {
+      res.json(response.data);
+    }
   } catch (err) {
     console.error("❌ GET OPERATOR ERROR =>", err.message);
     res.status(500).json({ success: false, error: err.message });
@@ -109,7 +121,6 @@ app.post("/api/cyrus/recharge", async (req, res) => {
       return res.status(400).json({ success: false, error: "Missing mobile, amount, operatorCode, or circleCode" });
     }
 
-    // Unique transaction ID generated via timestamp
     const systemTxnId = `TXN${Date.now().toString().slice(-9)}`;
 
     const liveUrl = `${RECHARGE_BASE_URL}?memberid=${CYRUS_MEMBER_ID}&pin=${CYRUS_PIN}&number=${mobile}&operator=${operatorCode}&circle=${circleCode}&amount=${amount}&usertx=${systemTxnId}&format=json&RechargeMode=1`;
