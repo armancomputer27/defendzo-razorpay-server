@@ -1,656 +1,117 @@
 require("dotenv").config();
-
 const express = require("express");
 const axios = require("axios");
 
 const app = express();
-
 app.use(express.json());
 
 //////////////////////////////////////////////////////
-// ENV
+// ⚙️ ENV CONFIGURATION & KEYS
 //////////////////////////////////////////////////////
+// Aap in keys ko .env file me bhi rakh sakte hain ya direct yahan se manage kar sakte hain
+const PORT = process.env.RECHARGE_PORT || 3001; // Razorpay se alag port (3001) rakha hai
+const CYRUS_API_KEY = process.env.CYRUS_API_KEY || "4C4E6480F9";
+const CYRUS_MEMBER_ID = process.env.CYRUS_MEMBER_ID || "AP263748";
 
-const PORT = process.env.PORT || 3000;
-
-const RZP_KEY_ID =
-  process.env.RZP_KEY_ID;
-
-const RZP_KEY_SECRET =
-  process.env.RZP_KEY_SECRET;
-
-if (!RZP_KEY_ID || !RZP_KEY_SECRET) {
-
-  console.log("❌ ENV Missing");
-
-  process.exit(1);
-
-}
-
-//////////////////////////////////////////////////////
-// AUTH
-//////////////////////////////////////////////////////
-
-const AUTH = {
-
-  username: RZP_KEY_ID,
-
-  password: RZP_KEY_SECRET
-
-};
-
-//////////////////////////////////////////////////////
-// BASE URL
-//////////////////////////////////////////////////////
-
-const RAZORPAY_V1 =
-  "https://api.razorpay.com/v1";
-
-const RAZORPAY_V2 =
-  "https://api.razorpay.com/v2";
-
-//////////////////////////////////////////////////////
-// TEST
-//////////////////////////////////////////////////////
-
+// Health Check Endpoint
 app.get("/", (req, res) => {
-
-  res.send("✅ Defendzo Running");
-
+  res.send("⚡ Defendzo Dedicated Cyrus Recharge Server is Running!");
 });
 
 //////////////////////////////////////////////////////
-// CREATE LINKED ACCOUNT
+// 🚀 ENDPOINT 1: LIVE RECHARGE EXECUTION
 //////////////////////////////////////////////////////
-
-app.post(
-  "/create-dealer-account",
-  async (req, res) => {
-
-    try {
-
-      const {
-
-        dealerUid,
-        name,
-        email,
-        mobile,
-        city,
-        state,
-        pincode,
-        shop_name
-
-      } = req.body;
-
-      //////////////////////////////////////////////////////
-      // VALIDATION
-      //////////////////////////////////////////////////////
-
-      if (
-        !dealerUid ||
-        !name ||
-        !email ||
-        !mobile ||
-        !city ||
-        !state ||
-        !pincode
-      ) {
-
-        return res.status(400).json({
-
-          success: false,
-
-          error: "Missing fields"
-
-        });
-
-      }
-
-      //////////////////////////////////////////////////////
-      // CLEAN DATA
-      //////////////////////////////////////////////////////
-
-      const cleanName = name
-        .replace(/[^a-zA-Z ]/g, "")
-        .trim();
-
-      const cleanShop = (shop_name || "Shop")
-        .replace(/[^a-zA-Z0-9 ]/g, "")
-        .trim();
-
-      //////////////////////////////////////////////////////
-      // CREATE ACCOUNT PAYLOAD
-      //////////////////////////////////////////////////////
-
-      const payload = {
-
-        email: email,
-
-        phone: mobile,
-
-        type: "route",
-
-        reference_id:
-          dealerUid.substring(0, 20),
-
-        legal_business_name:
-          cleanShop || cleanName,
-
-        contact_name:
-          cleanName,
-
-        business_type:
-          "individual",
-
-        profile: {
-
-          category:
-            "financial_services",
-
-          subcategory:
-            "lending",
-
-          addresses: {
-
-            registered: {
-
-              street1:
-                cleanShop,
-
-              street2:
-                city,
-
-              city:
-                city,
-
-              state:
-                state,
-
-              postal_code:
-                pincode,
-
-              country:
-                "IN"
-
-            }
-
-          }
-
-        }
-
-      };
-
-      console.log(
-        "CREATE ACCOUNT PAYLOAD =>",
-        JSON.stringify(payload, null, 2)
-      );
-
-      //////////////////////////////////////////////////////
-      // CREATE ACCOUNT
-      //////////////////////////////////////////////////////
-
-      const accountRes = await axios.post(
-
-        `${RAZORPAY_V2}/accounts`,
-
-        payload,
-
-        {
-          auth: AUTH
-        }
-
-      );
-
-      //////////////////////////////////////////////////////
-      // ACCOUNT ID
-      //////////////////////////////////////////////////////
-
-      const accountId =
-        accountRes.data.id;
-
-      console.log(
-        "ACCOUNT CREATED =>",
-        accountId
-      );
-
-      //////////////////////////////////////////////////////
-      // ENABLE ROUTE
-      //////////////////////////////////////////////////////
-
-      try {
-
-        const routeRes =
-          await axios.post(
-
-            `${RAZORPAY_V2}/accounts/${accountId}/products`,
-
-            {
-
-              product_name:
-                "route",
-
-              tnc_accepted:
-                true
-
-            },
-
-            {
-              auth: AUTH
-            }
-
-          );
-
-        console.log(
-          "ROUTE ENABLED =>",
-          JSON.stringify(routeRes.data, null, 2)
-        );
-
-      } catch (e) {
-
-        console.log(
-          "ROUTE ENABLE ERROR =>",
-          JSON.stringify(
-            e.response?.data || e.message,
-            null,
-            2
-          )
-        );
-
-      }
-
-      //////////////////////////////////////////////////////
-      // SUCCESS
-      //////////////////////////////////////////////////////
-
-      res.json({
-
-        success: true,
-
-        accountId:
-          accountId,
-
-        data:
-          accountRes.data
-
+app.post("/api/cyrus/recharge", async (req, res) => {
+  try {
+    const { mobile, amount, opCode, lat, long } = req.body;
+
+    // Basic Validations
+    if (!mobile || !amount || !opCode) {
+      console.log("⚠️ Validation Failed: Missing parameters in request body.");
+      return res.status(400).json({ 
+        success: false, 
+        error: "Missing required fields (mobile, amount, or opCode)" 
       });
-
-    } catch (err) {
-
-      console.log(
-        "CREATE ACCOUNT ERROR =>",
-        JSON.stringify(
-          err.response?.data || err.message,
-          null,
-          2
-        )
-      );
-
-      res.status(500).json({
-
-        success: false,
-
-        error:
-          err.response?.data || err.message
-
-      });
-
     }
 
-  }
-);
+    const reqId = Date.now(); // Unique request ID via Timestamp
+    
+    // Cyrus API URL Construction
+    const liveUrl = `https://cyrusrecharge.in/api/recharge.aspx?api_key=${CYRUS_API_KEY}&member_id=${CYRUS_MEMBER_ID}&mobile=${mobile}&amount=${amount}&op_code=${opCode}&lat=${lat || "0.0"}&long=${long || "0.0"}&req_id=${reqId}`;
 
-//////////////////////////////////////////////////////
-// UPDATE DEALER BANK
-//////////////////////////////////////////////////////
+    console.log("\n==================================================");
+    console.log(`📡 OUTGOING REQUEST TO CYRUS`);
+    console.log(`📱 Mobile: ${mobile} | 💰 Amount: ₹${amount} | 🔢 OpCode: ${opCode}`);
+    console.log(`🔗 Request ID: ${reqId}`);
+    console.log("==================================================");
 
-app.post(
-  "/update-dealer-bank",
-  async (req, res) => {
+    // Hit Cyrus Server
+    const cyrusRes = await axios.get(liveUrl);
+    const responseData = cyrusRes.data;
 
-    try {
+    console.log(`🎯 CYRUS RAW RESPONSE FROM SERVER => "${responseData}"`);
+    console.log("==================================================\n");
 
-      const {
-
-        accountId,
-        bankAccount,
-        ifsc,
-        beneficiaryName
-
-      } = req.body;
-
-      //////////////////////////////////////////////////////
-      // VALIDATION
-      //////////////////////////////////////////////////////
-
-      if (
-        !accountId ||
-        !bankAccount ||
-        !ifsc ||
-        !beneficiaryName
-      ) {
-
-        return res.status(400).json({
-
-          success: false,
-
-          error: "Missing fields"
-
-        });
-
-      }
-
-      //////////////////////////////////////////////////////
-      // WAIT
-      //////////////////////////////////////////////////////
-
-      await new Promise(
-        r => setTimeout(r, 3000)
-      );
-
-      //////////////////////////////////////////////////////
-      // UPDATE BANK
-      //////////////////////////////////////////////////////
-
-      const updatePayload = {
-
-        settlements: {
-
-          account_number:
-            bankAccount,
-
-          ifsc_code:
-            ifsc,
-
-          beneficiary_name:
-            beneficiaryName
-
-        }
-
-      };
-
-      console.log(
-        "BANK UPDATE PAYLOAD =>",
-        JSON.stringify(updatePayload, null, 2)
-      );
-
-      const updateRes =
-        await axios.patch(
-
-          `${RAZORPAY_V2}/accounts/${accountId}/products/route`,
-
-          updatePayload,
-
-          {
-            auth: AUTH
-          }
-
-        );
-
-      //////////////////////////////////////////////////////
-      // SUCCESS
-      //////////////////////////////////////////////////////
-
-      res.json({
-
-        success: true,
-
-        message:
-          "Bank Updated Successfully",
-
-        data:
-          updateRes.data
-
-      });
-
-    } catch (err) {
-
-      console.log(
-        "BANK UPDATE ERROR =>",
-        JSON.stringify(
-          err.response?.data || err.message,
-          null,
-          2
-        )
-      );
-
-      res.status(500).json({
-
+    // Check if response contains generic API error signatures
+    const upperRes = responseData.toUpperCase();
+    if (upperRes.includes("ERROR") || upperRes.includes("INVALID") || upperRes.includes("NOT WHITELISTED")) {
+      return res.json({
         success: false,
-
-        error:
-          err.response?.data || err.message
-
+        status: "FAILED",
+        cyrus_msg: responseData,
+        error_details: "Transaction rejected by Cyrus Operator System"
       });
-
     }
 
+    // Success or Pending responses
+    res.json({
+      success: true,
+      status: "SUCCESS_OR_PENDING",
+      cyrus_msg: responseData
+    });
+
+  } catch (err) {
+    console.error("❌ SERVER EXCEPTION CRASH =>", err.message);
+    res.status(500).json({
+      success: false,
+      error: "Internal Backend Server Error",
+      details: err.response?.data || err.message
+    });
   }
-);
+});
 
 //////////////////////////////////////////////////////
-// CREATE MANDATE
+// 🔍 ENDPOINT 2: AUTOMATIC OPERATOR FINDER
 //////////////////////////////////////////////////////
-
-app.post(
-  "/create-mandate-link",
-  async (req, res) => {
-
-    try {
-
-      const {
-
-        name,
-        mobile,
-        amount,
-        tenure,
-        frequency,
-        dealer_name,
-        dealerAccountId
-
-      } = req.body;
-
-      //////////////////////////////////////////////////////
-      // VALIDATION
-      //////////////////////////////////////////////////////
-
-      if (
-        !name ||
-        !mobile ||
-        !amount ||
-        !frequency
-      ) {
-
-        return res.status(400).json({
-
-          success: false,
-
-          error: "Missing fields"
-
-        });
-
-      }
-
-      //////////////////////////////////////////////////////
-      // PLAN PERIOD
-      //////////////////////////////////////////////////////
-
-      let period = "monthly";
-
-      switch (
-        frequency.toLowerCase()
-      ) {
-
-        case "weekly":
-          period = "weekly";
-          break;
-
-        case "yearly":
-          period = "yearly";
-          break;
-
-      }
-
-      //////////////////////////////////////////////////////
-      // CREATE PLAN
-      //////////////////////////////////////////////////////
-
-      const planRes =
-        await axios.post(
-
-          `${RAZORPAY_V1}/plans`,
-
-          {
-
-            period:
-              period,
-
-            interval:
-              1,
-
-            item: {
-
-              name:
-                "Defendzo EMI",
-
-              amount:
-                parseInt(amount) * 100,
-
-              currency:
-                "INR"
-
-            }
-
-          },
-
-          {
-            auth: AUTH
-          }
-
-        );
-
-      //////////////////////////////////////////////////////
-      // CREATE SUBSCRIPTION
-      //////////////////////////////////////////////////////
-
-      const subRes =
-        await axios.post(
-
-          `${RAZORPAY_V1}/subscriptions`,
-
-          {
-
-            plan_id:
-              planRes.data.id,
-
-            total_count:
-              parseInt(tenure || 12),
-
-            customer_notify:
-              1,
-
-            notes: {
-
-              dealerAccountId:
-                dealerAccountId || ""
-
-            }
-
-          },
-
-          {
-            auth: AUTH
-          }
-
-        );
-
-      //////////////////////////////////////////////////////
-      // LINK
-      //////////////////////////////////////////////////////
-
-      const link =
-
-        `https://defendzo.web.app/mandate` +
-
-        `?sub_id=${subRes.data.id}` +
-
-        `&dealer_name=${encodeURIComponent(
-          dealer_name || "Dealer"
-        )}` +
-
-        `&customer_name=${encodeURIComponent(
-          name
-        )}` +
-
-        `&mobile=${mobile}` +
-
-        `&amount=${amount}`;
-
-      //////////////////////////////////////////////////////
-      // SUCCESS
-      //////////////////////////////////////////////////////
-
-      res.json({
-
-        success: true,
-
-        subscription_id:
-          subRes.data.id,
-
-        link
-
-      });
-
-    } catch (err) {
-
-      console.log(
-        "MANDATE ERROR =>",
-        JSON.stringify(
-          err.response?.data || err.message,
-          null,
-          2
-        )
-      );
-
-      res.status(500).json({
-
-        success: false,
-
-        error:
-          err.response?.data || err.message
-
-      });
-
+app.get("/api/cyrus/find-operator", async (req, res) => {
+  try {
+    const { mobile } = req.query;
+    if (!mobile || mobile.length !== 10) {
+      return res.status(400).json({ success: false, error: "10-digit mobile number is mandatory" });
     }
 
+    const lookupUrl = `https://cyrusrecharge.in/api/operatorfind.aspx?api_key=${CYRUS_API_KEY}&mobile=${mobile}`;
+    
+    console.log(`🔍 Fetching Operator details for Mobile: ${mobile}`);
+    const infoRes = await axios.get(lookupUrl);
+    
+    console.log(`🎯 Finder Raw Response => "${infoRes.data}"`);
+    res.json({ success: true, raw_data: infoRes.data });
+
+  } catch (err) {
+    console.error("❌ OPERATOR LOOKUP EXCEPTION =>", err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
-);
+});
 
 //////////////////////////////////////////////////////
-// WEBHOOK
+// 🌐 START RECHARGE SERVER
 //////////////////////////////////////////////////////
-
-app.post(
-  "/webhook",
-  (req, res) => {
-
-    console.log(
-      "EVENT =>",
-      req.body.event
-    );
-
-    res.send("ok");
-
-  }
-);
-
-//////////////////////////////////////////////////////
-// START
-//////////////////////////////////////////////////////
-
 app.listen(PORT, () => {
-
-  console.log(
-    `🚀 Running on ${PORT}`
-  );
-
+  console.log(`\n🚀 ==================================================`);
+  console.log(`⚡ CYRUS RECHARGE SERVER IS ALIVE ON PORT: ${PORT}`);
+  console.log(`🎯 Endpoints Ready:`);
+  console.log(`   - POST http://localhost:${PORT}/api/cyrus/recharge`);
+  console.log(`   - GET  http://localhost:${PORT}/api/cyrus/find-operator`);
+  console.log(`====================================================\n`);
 });
